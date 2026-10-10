@@ -227,7 +227,7 @@ export class Engine {
 
   realization(plan: CyclePlan): Realization {
     const hit = this.realCache.get(plan.index);
-    if (hit && hit.version === this.version) return hit.real;
+    if (hit && hit.version === this.version && hit.real.plan === plan) return hit.real;
     const pattern = this.getPattern(plan.patternId);
     const real = pattern
       ? realize(this.project, pattern, plan, flagsOf(this.project))

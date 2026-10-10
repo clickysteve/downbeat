@@ -155,7 +155,9 @@ export function realize(project: Project, pattern: Pattern, plan: CyclePlan, fla
     if (!track || !vt || !pos) continue;
     const mods: VoiceMods = plan.mods[voice.id] ?? noMods();
     const vc = strCode(voice.id);
-    const row: Cell[] = vt.strikes.map((s, i) => {
+    // An untransformed track reads the pattern's strikes as they are now (live edits, undo).
+    const strikes = vt.live ? track.strikes : vt.strikes;
+    const row: Cell[] = strikes.map((s, i) => {
       if (vt.live) return emptyCell(s, !!s);
       const c = emptyCell(s, (vt.origin[i] !== null && vt.origin[i] !== 'added') || vt.removed[i] === true);
       c.added = vt.origin[i] === 'added';
@@ -171,12 +173,13 @@ export function realize(project: Project, pattern: Pattern, plan: CyclePlan, fla
 
     for (let i = 0; i < steps; i++) {
       const p = pos[i]!;
-      const s = vt.strikes[p];
+      const s = strikes[p];
       if (!s) continue;
       writtenAt[i] = true;
       levelAt[i] = s.v || 3;
       st.written++;
-      const cell = row[p]!;
+      const cell = row[p];
+      if (!cell) continue;
 
       if (plan.sourceOnly) {
         const level = s.v || 3;
@@ -330,9 +333,11 @@ export function realize(project: Project, pattern: Pattern, plan: CyclePlan, fla
         };
         events.push(ev);
         st.generated++;
-        const cell = row[pos[step]!]!;
-        cell.gen = 'fill';
-        cell.genCount++;
+        const cell = row[pos[step]!];
+        if (cell) {
+          cell.gen = 'fill';
+          cell.genCount++;
+        }
       }
     }
   }
