@@ -152,4 +152,25 @@ describe('app actions', () => {
     expect(kinds.has('fill')).toBe(true);
     expect(app.feed.some((l) => /^FILL SNARE/.test(l.text))).toBe(true);
   });
+
+  it('records strikes from MIDI input while playing, at the nearest step, only when armed', () => {
+    const { app, run } = makeApp();
+    app.newProject();
+    app.clearTrack(true);
+    const clap = app.project.voices.find((v) => v.name === 'CLAP')!.id;
+    app.play();
+    run(300);
+    app.noteIn(9, 39, 127);
+    expect(app.track(clap).strikes.filter(Boolean).length).toBe(0);
+    app.recArmed = true;
+    app.heard();
+    app.noteIn(9, 39, 127);
+    app.noteIn(9, 60, 100); // no voice plays note 60: ignored
+    const written = app.track(clap).strikes.map((s, i) => (s ? i : -1)).filter((i) => i >= 0);
+    expect(written.length).toBe(1);
+    expect(app.track(clap).strikes[written[0]!]!.v).toBe(5);
+    const pos = app.sched.positionTick() % 96;
+    expect(Math.abs(written[0]! * 6 - pos)).toBeLessThanOrEqual(3 + 1e-9);
+    app.stop();
+  });
 });
