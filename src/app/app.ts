@@ -344,6 +344,7 @@ export class App {
   selectVoice(id: string, audition = true): void {
     if (!this.project.voices.some((v) => v.id === id)) return;
     this.sel.voice = id;
+    if (this.sel.soundStep > this.voice().notes.length) this.sel.soundStep = 1;
     this.emit(['selection', 'track']);
     if (audition) this.auditionVoice(id);
   }

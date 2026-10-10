@@ -190,6 +190,7 @@ input[type='range']:disabled {
 
 #app {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr auto;
   min-height: 100vh;
 }
@@ -1336,4 +1337,13 @@ input[type='range']:disabled {
 
 .top .ctl {
   gap: 4px;
+}
+
+@media (max-width: 760px) {
+  .status .keys {
+    display: none;
+  }
+  .status .msg {
+    white-space: normal;
+  }
 }
