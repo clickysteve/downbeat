@@ -227,9 +227,51 @@ export class App {
     if (playing && plan && plan.index !== this.lastHeardCycle && this.engine.cycleAt(tick) === plan) {
       this.lastHeardCycle = plan.index;
       for (const l of plan.labels) this.pushFeed({ cycle: plan.index + 1, kind: l.kind, text: l.text });
+      if (real) for (const l of this.cycleSummary(plan, real)) this.pushFeed({ cycle: plan.index + 1, ...l });
       this.followSong(plan);
     }
     return { plan, real, tick, playing };
+  }
+
+  /** What the performance did this cycle, for the monitor: fills, extra hits, variant changes. */
+  private cycleSummary(plan: CyclePlan, real: Realization): { kind: string; text: string }[] {
+    const out: { kind: string; text: string }[] = [];
+    const name = (id: string) => this.project.voices.find((v) => v.id === id)?.name ?? '?';
+    const gen = new Map<string, number>();
+    for (const ev of real.events) {
+      if (ev.kind !== 'fill' && ev.kind !== 'extra') continue;
+      const k = `${ev.kind}:${ev.voice}:${ev.sound}`;
+      gen.set(k, (gen.get(k) ?? 0) + 1);
+    }
+    const fills: string[] = [];
+    const extras: string[] = [];
+    for (const [k, n] of gen) {
+      const [kind, voice, sound] = k.split(':') as [string, string, string];
+      if (kind === 'fill') fills.push(`${name(voice)}${sound !== voice ? `→${name(sound)}` : ''} ×${n}`);
+      else extras.push(`${name(voice)} ×${n}`);
+    }
+    if (fills.length) out.push({ kind: 'fill', text: `FILL ${fills.join(', ')}` });
+    if (extras.length) out.push({ kind: 'fill', text: `EXTRA ${extras.join(', ')}` });
+    const changed = plan.labels.some((l) => l.kind === 'evolve' || l.kind === 'morph' || l.kind === 'rule' || l.kind === 'auto');
+    if (changed) {
+      let add = 0;
+      let rem = 0;
+      let chg = 0;
+      const voices = new Set<string>();
+      for (const [id, vt] of Object.entries(plan.variant)) {
+        if (vt.live) continue;
+        vt.origin.forEach((o, i) => {
+          if (o === 'added') (add++, voices.add(id));
+          if (o === 'changed') (chg++, voices.add(id));
+          if (vt.removed[i]) (rem++, voices.add(id));
+        });
+      }
+      if (add + rem + chg) out.push({ kind: 'mutate', text: `CHANGED +${add} −${rem} ~${chg} (${[...voices].map(name).join(', ')})` });
+    }
+    let sup = 0;
+    for (const st of Object.values(real.stats)) sup += st.written - st.played;
+    if (sup && plan.index % 4 === 0) out.push({ kind: 'rest', text: `${sup} WRITTEN HIT${sup > 1 ? 'S' : ''} RESTING (DENSITY / PROBABILITY)` });
+    return out;
   }
 
   private followSong(plan: CyclePlan): void {
