@@ -49,6 +49,13 @@ per-step probability (`50`) as tiny corner figures, cells outside a voice's
 loop hatched with a heavy loop-end edge. Every distinction is carried by
 shape as well as colour, so the 1-bit **Classic** palette loses nothing.
 
+**FOLLOW** (a toggle in the grid's title bar, a browser preference): on,
+the grid shows the pattern the song is playing and scrolls sideways to keep
+the playhead in view; off, it stays on the pattern you chose, and a steady
+banner says which pattern the song is playing. Banners only describe states
+that last (a cued pattern, FOLLOW off, SOURCE, LOCK, an audition); they never
+flash for a single frame.
+
 While stopped the grid shows a *preview* of the first cycle, so changing
 density or fills is visible before playing. While playing it shows the
 cycle being heard (not the one being scheduled).

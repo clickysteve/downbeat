@@ -52,12 +52,20 @@ export class GridView {
   private phStep = -1;
   private drag: { action: 'paint' | 'erase' | 'flam' | 'prob'; seen: Set<string> } | null = null;
   private pending: { voice: string; ms: number }[] = [];
+  private followBtn = h('button', {
+    type: 'button',
+    class: 'tiny follow',
+    text: 'FOLLOW',
+    testid: 'follow',
+    help: 'FOLLOW on: the grid shows the pattern the song is playing and scrolls with the playhead. Off: the grid stays on the pattern you chose.',
+    on: { click: () => this.app.setFollow(!this.app.prefs.follow) },
+  });
 
   constructor(private app: App) {
     this.el = h(
       'div',
       { class: 'panel', testid: 'grid-panel' },
-      h('div', { class: 'panel-t' }, h('span', { text: 'RHYTHM', testid: 'grid-title' }), h('span', { class: 'sp' }), h('span', { class: 'gtitle-r', testid: 'grid-info' })),
+      h('div', { class: 'panel-t' }, h('span', { text: 'RHYTHM', testid: 'grid-title' }), h('span', { class: 'sp' }), h('span', { class: 'gtitle-r', testid: 'grid-info' }), this.followBtn),
       this.banner,
       this.wrap,
       this.legend(),
@@ -167,11 +175,12 @@ export class GridView {
   /** Called every animation frame (and after edits). */
   frame(force = false): void {
     const app = this.app;
-    const shown = app.pattern();
+    // What is heard first: following the song may change the pattern shown.
     const { plan, real, tick, playing } = app.heard();
+    const shown = app.pattern();
     const live = !!plan && plan.patternId === shown.id;
     const usePlan = live ? plan : null;
-    const ps = `${playing}:${plan?.index ?? -1}:${plan?.patternId}:${app.engine.version}:${shown.id}:${live}:${app.project.voices.map((v) => `${v.mute}${v.solo}${app.engine.jamming(v.id) ?? ''}`).join('')}:${app.sel.voice}:${app.ext}`;
+    const ps = `${app.prefs.follow}:${playing}:${plan?.index ?? -1}:${plan?.patternId}:${app.engine.version}:${shown.id}:${live}:${app.project.voices.map((v) => `${v.mute}${v.solo}${app.engine.jamming(v.id) ?? ''}`).join('')}:${app.sel.voice}:${app.ext}`;
     if (force || ps !== this.paintSig) {
       this.paintSig = ps;
       this.paint(shown, usePlan, live ? real : null);
@@ -191,6 +200,7 @@ export class GridView {
         for (const r of this.rows) r.cells[step]?.classList.add('ph');
       }
       this.phStep = step;
+      if (step >= 0 && app.prefs.follow) this.scrollTo(step);
     }
     for (const r of this.rows) {
       const p = step >= 0 && usePlan ? usePlan.pos[r.id]?.[step] ?? -1 : -1;
@@ -215,6 +225,18 @@ export class GridView {
     for (const r of this.rows) r.label.classList.toggle('flash', r.flashUntil > now);
   }
 
+  /** Keep the playing step in view when the grid is wider than its panel. */
+  private scrollTo(step: number): void {
+    const w = this.wrap;
+    if (w.scrollWidth <= w.clientWidth + 1) return;
+    const cell = this.head[step];
+    if (!cell) return;
+    const label = this.rows[0]?.label.offsetWidth ?? 0;
+    const left = cell.offsetLeft;
+    const right = left + cell.offsetWidth;
+    if (left < w.scrollLeft + label || right > w.scrollLeft + w.clientWidth) w.scrollLeft = Math.max(0, left - label);
+  }
+
   private updateBanner(shown: Pattern, plan: CyclePlan | null, playing: boolean): void {
     const app = this.app;
     let text = '';
@@ -224,9 +246,14 @@ export class GridView {
       cls += ' aud';
     } else if (playing && plan && plan.patternId !== shown.id) {
       const pl = app.engine.getPattern(plan.patternId);
-      text = app.project.playMode === 'song' ? `PLAYING ${pl?.name ?? '?'} (SONG) · SHOWING ${shown.name}` : `PLAYING ${pl?.name ?? '?'} · ${shown.name} STARTS AT THE END OF THIS CYCLE`;
+      text =
+        app.project.playMode === 'song'
+          ? `THE SONG IS PLAYING ${pl?.name ?? '?'} · YOU ARE EDITING ${shown.name} · FOLLOW IS OFF`
+          : `${shown.name} IS CUED: IT STARTS WHEN ${pl?.name ?? '?'} FINISHES THIS CYCLE`;
     } else if (app.engine.sourceOnly) text = 'SOURCE ONLY: the written pattern, nothing generated or suppressed';
     else if (app.engine.lockKey !== null) text = 'VARIATION LOCKED: every cycle repeats this performance';
+    this.followBtn.classList.toggle('on', app.prefs.follow);
+    this.followBtn.setAttribute('aria-pressed', String(app.prefs.follow));
     this.banner.hidden = !text;
     this.banner.className = cls;
     this.banner.textContent = text;

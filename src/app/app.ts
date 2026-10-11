@@ -277,7 +277,19 @@ export class App {
     return out;
   }
 
+  /** FOLLOW: the grid shows the pattern the song is playing, and scrolls with the playhead. */
+  setFollow(on: boolean): void {
+    this.prefs.follow = on;
+    this.store.savePrefs(this.prefs);
+    if (on && this.sched.state !== 'stopped') {
+      const { plan } = this.heard();
+      if (plan) this.followSong(plan);
+    }
+    this.emit(['selection', 'pattern']);
+  }
+
   private followSong(plan: CyclePlan): void {
+    if (!this.prefs.follow) return;
     if (this.project.playMode === 'song' && plan.patternId !== this.project.current && plan.patternId !== AUDITION_ID) {
       if (this.project.patterns.some((p) => p.id === plan.patternId)) {
         this.project.current = plan.patternId;
@@ -590,6 +602,12 @@ export class App {
   selectPattern(id: string): void {
     if (!this.project.patterns.some((p) => p.id === id)) return;
     if (this.engine.audition) this.discardBreed();
+    // Choosing a pattern to look at while a song plays: stop the view following the song.
+    if (this.sched.state !== 'stopped' && this.project.playMode === 'song' && this.prefs.follow) {
+      this.prefs.follow = false;
+      this.store.savePrefs(this.prefs);
+      this.setStatus('FOLLOW is off so you can edit this pattern while the song plays. Switch FOLLOW on (above the grid) to follow the song again.');
+    }
     this.project.current = id;
     this.touch(['pattern', 'selection', 'track']);
     if (this.sched.state === 'playing' && this.project.playMode === 'pattern') this.setStatus(`${this.pattern().name} cued: it starts at the end of this cycle.`);

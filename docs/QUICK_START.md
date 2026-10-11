@@ -66,6 +66,11 @@ Switch the top bar from **CLASSIC** to **EXTENDED**. New tabs appear.
 The **WHAT CHANGED** panel lists every fill, generation, rule and section
 as you hear it.
 
+**FOLLOW** (above the grid, on by default): the grid shows whichever pattern
+the song is playing and scrolls to keep the playhead in view. Click a
+pattern while a song plays and FOLLOW switches off, so you can edit that
+pattern while the song carries on; click FOLLOW to follow the song again.
+
 ## 5. Keep, compare, replay
 
 | Button | Does |
