@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from '../../src/engine/engine';
 import { MidiOutput, type MidiSink } from '../../src/midi/output';
 import { Scheduler, type SchedulerEvent, type Ticker } from '../../src/scheduler/scheduler';
+import { noteName, parseNote, parseNotes } from '../../src/midi/messages';
 import { put, smallProject } from './helpers';
 import { makePattern } from '../../src/engine/defaults';
 
@@ -371,5 +372,25 @@ describe('external clock', () => {
     r.sched.setSource('external');
     r.sched.start();
     expect(r.sched.state).toBe('stopped');
+  });
+});
+
+describe('note names', () => {
+  it('parses numbers and names in the C3 = 60 convention, and round-trips with noteName', () => {
+    expect(parseNote('36')).toBe(36);
+    expect(parseNote('C1')).toBe(36);
+    expect(parseNote('c#1')).toBe(37);
+    expect(parseNote('Db1')).toBe(37);
+    expect(parseNote('C3')).toBe(60);
+    expect(parseNote('C-2')).toBe(0);
+    expect(parseNote('G8')).toBe(127);
+    expect(parseNote('G#8')).toBeNull();
+    expect(parseNote('128')).toBeNull();
+    expect(parseNote('H2')).toBeNull();
+    for (let n = 0; n <= 127; n++) expect(parseNote(noteName(n))).toBe(n);
+    expect(parseNotes('42+46')).toEqual([42, 46]);
+    expect(parseNotes('F#1, A#1')).toEqual([42, 46]);
+    expect(parseNotes('42+nope')).toBeNull();
+    expect(parseNotes('')).toBeNull();
   });
 });

@@ -1353,3 +1353,96 @@ input[type='range']:disabled {
     white-space: normal;
   }
 }
+
+/* ---------------------------------------------------------------- MIDI notes */
+
+.note-ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+
+.note-ctl .note-in {
+  width: 64px;
+  text-align: center;
+  border-left: 0;
+  border-right: 0;
+}
+
+.note-ctl .note-name {
+  min-width: 44px;
+  padding: 0 6px;
+  color: var(--dim);
+  font-size: 11px;
+}
+
+.note-ctl button.on {
+  background: var(--selection);
+  color: var(--on-selection);
+}
+
+.ctl-notes {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+}
+
+.ctl-notes > .lab {
+  width: auto;
+}
+
+.ctl-notes .notes-list {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.ctl-notes .notes-list .group {
+  flex-wrap: wrap;
+}
+
+.ctl-notes .notes-list .group > .lab {
+  width: 26px;
+}
+
+.drum-map {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ink);
+}
+
+.dm-row {
+  display: grid;
+  grid-template-columns: 96px 76px auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.dm-row > button {
+  justify-self: start;
+}
+
+.dm-row > button:last-child {
+  justify-self: end;
+}
+
+.dm-row:last-child {
+  border-bottom: 0;
+}
+
+.dm-name {
+  font-weight: 700;
+  border-left: 5px solid var(--vc, var(--ink));
+  padding-left: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .dm-row {
+    grid-template-columns: 1fr auto;
+  }
+}

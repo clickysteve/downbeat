@@ -175,4 +175,34 @@ describe('app actions', () => {
     expect(Math.abs(written[0]! * 6 - pos)).toBeLessThanOrEqual(3 + 1e-9);
     app.stop();
   });
+
+  it('changes a voice\'s MIDI note by value, by semitone and by LEARN, with undo', () => {
+    const { app } = makeApp();
+    app.newProject();
+    const kickId = app.project.voices.find((v) => v.name === 'KICK')!.id;
+    const kick = () => app.project.voices.find((v) => v.id === kickId)!;
+    app.setVoiceNotes(kickId, 0, [48]);
+    expect(kick().notes[0]).toEqual([48]);
+    app.shiftVoiceNotes(kickId, 0, -12);
+    expect(kick().notes[0]).toEqual([36]);
+    app.setVoiceNotes(kickId, 0, [127]);
+    app.shiftVoiceNotes(kickId, 0, 1); // would leave the MIDI range: refused
+    expect(kick().notes[0]).toEqual([127]);
+    app.undo();
+    expect(kick().notes[0]).toEqual([36]);
+    app.setVoiceChannel(kickId, 3);
+    expect(kick().channel).toBe(3);
+    // LEARN without a MIDI input explains what is needed and does nothing.
+    app.startLearn(kickId, 0);
+    expect(app.learn).toBeNull();
+    expect(app.statusKind).toBe('warn');
+    // With learn armed, the next incoming note is assigned (and not recorded as a strike).
+    app.learn = { voice: kickId, step: 0 };
+    app.noteIn(9, 41, 100);
+    expect(kick().notes[0]).toEqual([41]);
+    expect(app.learn).toBeNull();
+    app.noteIn(9, 50, 100);
+    expect(kick().notes[0]).toEqual([41]);
+  });
 });
+

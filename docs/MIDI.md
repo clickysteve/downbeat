@@ -12,10 +12,18 @@ simulated Web MIDI device in Chrome. See "Needs checking on real hardware".
 - **SEND TO** (top bar OUT, or the MIDI dialog): INTERNAL, MIDI or BOTH.
 - Press **MIDI → ENABLE MIDI** once; DOWNBEAT then remembers the choice and
   the device. Web MIDI needs Chrome, Edge, Opera or Firefox.
-- Each voice has its own **channel** and **step list** of notes (VOICE
-  tab). Defaults are General MIDI drums on channel 10. A step can be a
-  chord (`42+46`). Fills played "with another voice's sound" use that
-  voice's channel and notes.
+- Each voice has its own **channel** and **note**. Defaults are General MIDI
+  drums on channel 10. Set them for every voice at once in **MIDI → DRUM
+  MAP**, or for the selected voice in the **VOICE** tab:
+  - type a number (`36`) or a name (`C1`; DOWNBEAT numbers octaves so that
+    C3 = 60, as many drum machines do), or use **−** / **+** (in the field,
+    ↑/↓ move a semitone, Shift-↑/↓ an octave);
+  - **LEARN**: choose a MIDI input (MIDI → INPUT AND SYNC), press LEARN and
+    hit a pad or key: its note is assigned. Press LEARN again to cancel.
+- A voice can have several sound **steps** (a step list, e.g. closed and
+  pedal hat); the DRUM MAP sets step 1 and the VOICE tab sets each step. A
+  step can be a chord (`42+46`). Fills played "with another voice's sound"
+  use that voice's channel and notes. Note changes are undoable.
 - **GATE** is the note length in clock ticks (24 per quarter), which
   matters for gates and envelopes on modular systems.
 - **PROGRAM** sends a program change on the voice's channel at Start (once

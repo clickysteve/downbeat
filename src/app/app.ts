@@ -13,6 +13,7 @@ import { randomSeed } from '../engine/rng';
 import { MAX_PATTERNS, MAX_RULES, MAX_VOICES, PPQ, clamp, geometry, type Pattern, type Project, type Rule, type Strike, type Track, type Voice } from '../engine/types';
 import { breed, type BreedMethod } from '../extended/breed';
 import { combine, euclidStrikes, type EuclidMode, type EuclidSpec } from '../extended/euclid';
+import { noteName } from '../midi/messages';
 import { MidiOutput, type MidiSink } from '../midi/output';
 import { MidiAccess, type MidiAccessEvents } from '../midi/webmidi';
 import { parseSmf, writeSmf, type SmfTrack } from '../midi/smf';
@@ -77,6 +78,8 @@ export class App {
   take: { recording: boolean; notes: NoteItem[]; startTick: number; tempo: number } = { recording: false, notes: [], startTick: 0, tempo: 120 };
   /** Record strikes from the MIDI input while playing. */
   recArmed = false;
+  /** MIDI LEARN in progress: the next incoming note is assigned here. */
+  learn: { voice: string; step: number } | null = null;
   /** Copied track strikes. */
   clipboard: (Strike | null)[] | null = null;
   /** Breeding parameters and the auditioned child. */
@@ -1059,8 +1062,57 @@ export class App {
     if ((b0 & 0xf0) === 0x90 && (data[2] ?? 0) > 0) this.noteIn(b0 & 0x0f, data[1] ?? 0, data[2] ?? 0);
   }
 
-  /** An incoming note: play the matching voice; with REC armed while playing, write a strike. */
+  setVoiceChannel(voiceId: string, channel: number): void {
+    const v = this.project.voices.find((x) => x.id === voiceId);
+    if (!v) return;
+    this.edit(() => (v.channel = clamp(Math.round(channel), 1, 16)), ['voices', 'track', 'midi']);
+  }
+
+  /** Set the note (or chord) a voice plays for one of its sound steps (0-based). */
+  setVoiceNotes(voiceId: string, step: number, notes: number[]): void {
+    const v = this.project.voices.find((x) => x.id === voiceId);
+    const clean = notes.map((n) => clamp(Math.round(n), 0, 127)).slice(0, 8);
+    if (!v || step < 0 || step >= v.notes.length || !clean.length) return;
+    this.edit(() => (v.notes[step] = clean), ['voices', 'track', 'midi']);
+  }
+
+  /** Move a voice's step up or down by semitones (every note of a chord moves). */
+  shiftVoiceNotes(voiceId: string, step: number, delta: number): void {
+    const v = this.project.voices.find((x) => x.id === voiceId);
+    const cur = v?.notes[step];
+    if (!v || !cur) return;
+    if (cur.some((n) => n + delta < 0 || n + delta > 127)) return;
+    this.setVoiceNotes(voiceId, step, cur.map((n) => n + delta));
+  }
+
+  /** MIDI LEARN: the next note arriving at the MIDI input becomes this voice step's note. */
+  startLearn(voiceId: string, step = 0): void {
+    if (this.midi.state !== 'ready' || !this.midi.inputReady) {
+      this.setStatus('LEARN needs a MIDI input: choose one in the MIDI dialog (INPUT AND SYNC), then press LEARN and hit a pad.', 'warn');
+      return;
+    }
+    this.learn = { voice: voiceId, step };
+    this.setStatus(`LEARN: play a note on ${this.midi.inputs().find((p) => p.id === this.prefs.midiIn)?.name ?? 'the MIDI input'} for ${this.voice(voiceId).name}. Press LEARN again to cancel.`);
+    this.emit(['midi', 'voices']);
+  }
+
+  cancelLearn(): void {
+    if (!this.learn) return;
+    this.learn = null;
+    this.setStatus('LEARN cancelled.');
+    this.emit(['midi', 'voices']);
+  }
+
+  /** An incoming note: LEARN it, or play the matching voice; with REC armed while playing, write a strike. */
   noteIn(_channel: number, note: number, velocity: number): void {
+    if (this.learn) {
+      const { voice, step } = this.learn;
+      this.learn = null;
+      this.setVoiceNotes(voice, step, [note]);
+      this.setStatus(`${this.voice(voice).name} now plays note ${note} (${noteName(note)}).`);
+      this.auditionVoice(voice, 4, step + 1);
+      return;
+    }
     const v = this.project.voices.find((x) => x.notes.some((n) => n.includes(note)));
     if (!v) return;
     const level = velocity >= 118 ? 5 : velocity >= 96 ? 4 : velocity >= 64 ? 3 : velocity >= 36 ? 2 : 1;

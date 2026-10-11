@@ -340,6 +340,51 @@ test('external clock: clock alone does not start; Start / Stop / Continue drive 
   await expect(page.getByTestId('sync-status')).toHaveText('EXT LOST', { timeout: 3000 });
 });
 
+test('drum map: change a voice\'s MIDI note by typing, by name and by LEARN; MIDI output follows', async ({ page }) => {
+  const errors = await boot(page);
+  await freshProject(page);
+  await page.getByTestId('cell-KICK-0').click();
+  await routeToMidi(page);
+  await page.getByTestId('open-midi').click();
+  await expect(page.getByTestId('drum-map')).toBeVisible();
+  // Type a number.
+  await page.getByTestId('dm-note-KICK').fill('48');
+  await page.getByTestId('dm-note-KICK').press('Enter');
+  await expect(page.getByTestId('dm-note-KICK-name')).toHaveText('C2');
+  // A name, and a semitone step.
+  await page.getByTestId('dm-note-SNARE').fill('E1');
+  await page.getByTestId('dm-note-SNARE').press('Enter');
+  await page.getByTestId('dm-note-SNARE-inc').click();
+  await expect(page.getByTestId('dm-note-SNARE')).toHaveValue('41');
+  // A bad entry is refused and the field restored.
+  await page.getByTestId('dm-note-CLAP').fill('nonsense');
+  await page.getByTestId('dm-note-CLAP').press('Enter');
+  await expect(page.getByTestId('dm-note-CLAP')).toHaveValue('39');
+  // Channel.
+  await page.getByTestId('dm-ch-KICK').selectOption('3');
+  // LEARN from the MIDI input.
+  await page.getByTestId('midi-in').selectOption('fake-in');
+  await page.getByTestId('dm-note-CL HAT-learn').click();
+  await expect(page.getByTestId('dm-note-CL HAT-learn')).toHaveClass(/on/);
+  await midi(page).sendIn([0x99, 51, 100]);
+  await expect(page.getByTestId('dm-note-CL HAT')).toHaveValue('51');
+  await expect(page.getByTestId('dm-note-CL HAT-learn')).not.toHaveClass(/on/);
+  await page.getByTestId('dialog-close').click();
+  // The VOICE tab shows the same note.
+  await page.getByTestId('voice-KICK').click();
+  await page.getByTestId('tab-voice').click();
+  await expect(page.getByTestId('step-1')).toHaveValue('48');
+  // Played notes use the new channel and note.
+  await midi(page).reset();
+  await page.getByTestId('play').click();
+  await page.waitForTimeout(800);
+  await page.getByTestId('stop').click();
+  const ons = (await midi(page).sent()).filter(isOn);
+  expect(ons.some((m) => m.bytes[0] === 0x92 && m.bytes[1] === 48)).toBe(true);
+  expect(ons.some((m) => m.bytes[1] === 36)).toBe(false);
+  expect(errors).toEqual([]);
+});
+
 test('responsive: usable at phone width without horizontal page scroll', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await boot(page);

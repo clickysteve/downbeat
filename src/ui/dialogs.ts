@@ -2,7 +2,8 @@
 import type { App } from '../app/app';
 import { MidiAccess } from '../midi/webmidi';
 import { DEMOS } from '../persistence/demos';
-import { button, clear, h, seg, toggle, type Refreshers } from './dom';
+import { button, clear, h, seg, select, toggle, type Refreshers } from './dom';
+import { noteControl } from './notes';
 import { ROLES, ROLE_INFO, contrastWarnings, exportPalette, importPalette, PaletteError } from './palette';
 
 export class Dialogs {
@@ -38,6 +39,25 @@ export class Dialogs {
       clear(content);
       content.append(...body(r).filter((x): x is HTMLElement => !!x));
     };
+    // Never rebuild under a field being typed in: wait until it loses focus.
+    let pending = false;
+    const editing = () => {
+      const a = document.activeElement as HTMLElement | null;
+      return !!a && content.contains(a) && ((a.tagName === 'INPUT' && (a as HTMLInputElement).type === 'text') || a.tagName === 'SELECT');
+    };
+    const rebuild = () => {
+      if (editing()) pending = true;
+      else build();
+    };
+    content.addEventListener('focusout', () => {
+      if (!pending) return;
+      setTimeout(() => {
+        if (pending && !editing()) {
+          pending = false;
+          build();
+        }
+      });
+    });
     build();
     const dlg = h(
       'div',
@@ -47,7 +67,7 @@ export class Dialogs {
     );
     this.scrim = h('div', { class: 'scrim', on: { pointerdown: (e: PointerEvent) => e.target === this.scrim && this.close() } }, dlg);
     document.body.append(this.scrim);
-    if (topics.length) this.unsub = this.app.on(topics, build);
+    if (topics.length) this.unsub = this.app.on(topics, rebuild);
     (dlg.querySelector('button, input, select') as HTMLElement | null)?.focus();
   }
 
@@ -135,18 +155,40 @@ export class Dialogs {
             v.addEventListener('input', () => app.setVolume(Number(v.value)));
             return v;
           })()),
+          h('h3', { text: 'DRUM MAP' }),
+          h('p', { class: 'hint', text: 'The MIDI channel and note each voice sends. Type a number (36) or a name (C1, where C3 = 60), use − / +, or press LEARN and hit a pad on the MIDI input. Voices with several sound steps: edit the others in the VOICE tab.' }),
+          this.drumMap(r),
           h('h3', { text: 'INPUT AND SYNC' }),
           h('label', { class: 'ctl' }, h('span', { class: 'lab', text: 'DEVICE' }), inSel),
           seg(r, { label: 'CLOCK', options: [['internal', 'INTERNAL'], ['external', 'EXTERNAL']] as const, get: () => (app.sched.external ? 'external' : 'internal'), set: (s) => app.setClockSource(s), help: 'EXTERNAL: follow MIDI Clock and Start / Stop / Continue / Song Position from the input', testid: 'clock-source' }),
           h('p', { class: 'hint', testid: 'sync-detail', text: app.sched.external ? `Status: ${app.syncStatus.toUpperCase()}${bpm ? ` · incoming ${bpm.toFixed(1)} BPM` : ''}. Clock while stopped never starts DOWNBEAT; Start (FA) starts from the top, Continue (FB) from where Stop (FC) left off.` : 'Internal clock. Choose EXTERNAL to follow another instrument (for example a Hermod+ or a DAW).' }),
           toggle(r, { label: 'RECORD STRIKES FROM INPUT', get: () => app.recArmed, set: (on) => ((app.recArmed = on), app.emit(['midi'])), help: 'While playing, notes from the input that match a voice are written into the pattern at the nearest step', testid: 'rec-arm' }),
           h('h3', { text: 'NOTES' }),
-          h('p', { class: 'hint', text: 'Each voice has its own channel and notes (VOICE tab). PANIC sends All Notes Off and All Sound Off on every channel. No physical MIDI hardware was used in DOWNBEAT\'s automated tests.' }),
+          h('p', { class: 'hint', text: 'Each voice has its own channel and notes (DRUM MAP above, or the VOICE tab). PANIC sends All Notes Off and All Sound Off on every channel. No physical MIDI hardware was used in DOWNBEAT\'s automated tests.' }),
           app.midiLog.length ? h('pre', { class: 'hint', text: app.midiLog.slice(-8).join('\n') }) : null,
         ];
       },
       ['midi'],
     );
+  }
+
+  /** Every voice's channel and first note in one table. */
+  private drumMap(r: Refreshers): HTMLElement {
+    const app = this.app;
+    const rows = app.project.voices.map((v) => {
+      const note = noteControl(app, v.id, 0, `dm-note-${v.name}`);
+      r.push(note.refresh);
+      const ch = select(r, {
+        options: () => Array.from({ length: 16 }, (_, i) => [String(i + 1), `CH ${i + 1}`] as const),
+        get: () => String(app.project.voices.find((x) => x.id === v.id)?.channel ?? 10),
+        set: (c) => app.setVoiceChannel(v.id, Number(c)),
+        help: `MIDI channel for ${v.name}`,
+        testid: `dm-ch-${v.name}`,
+      });
+      const more = v.notes.length > 1 ? button(`+${v.notes.length - 1} STEP${v.notes.length > 2 ? 'S' : ''}`, () => (this.close(), app.selectVoice(v.id, false), app.setTab('voice')), { cls: 'tiny', help: `${v.name} has ${v.notes.length} sound steps: edit the others in the VOICE tab` }) : h('span');
+      return h('div', { class: 'dm-row', testid: `dm-${v.name}` }, h('span', { class: 'dm-name', style: `--vc: var(--v${v.color + 1})`, text: v.name }), ch, note.el, more, button('HEAR', () => app.auditionVoice(v.id), { cls: 'tiny', help: `Play ${v.name} now` }));
+    });
+    return h('div', { class: 'drum-map', testid: 'drum-map' }, ...rows);
   }
 
   // ---------------------------------------------------------------- PALETTE
