@@ -88,11 +88,25 @@ modern browser.
 - [Extended spec](docs/EXTENDED_SPEC.md)
 - [Architecture](docs/ARCHITECTURE.md), [Design](docs/DESIGN.md), [MIDI and sync](docs/MIDI.md)
 
-## Status
+## How historical is CLASSIC?
 
-All automated tests pass (unit and browser). No physical MIDI hardware has
-been tested: MIDI was verified with simulated Web MIDI devices only. See
-[docs/MIDI.md](docs/MIDI.md) for what needs checking on real equipment.
+No UpBeat manual or executable could be found. CLASSIC is built from three
+contemporary magazine reviews (1987 and 1990), adverts and screenshots, not
+from observing the original program. The reviews describe *what* UpBeat's
+controls did, rarely *how*: the exact density, fill, jam and flam algorithms
+are DOWNBEAT's own approximations, labelled INFERRED and versioned so they can
+be corrected later without changing saved projects. CLASSIC is a faithful
+reading of the documented feature set, not an exact reproduction of UpBeat's
+output.
+
+## Known limitations
+
+- Songs are flat lists of patterns with repeat counts (UpBeat could nest songs).
+- Patterns are at most 8 bars and 64 steps; a track's loop cannot be longer than its pattern.
+- Not implemented from UpBeat: paste modes and the Compander, articulation strikers, program-change strikes, MIDI Volume, count-in, MIDI Thru, Normal (synth) tracks, MIDI files inside songs. See [docs/UNCERTAINTIES.md](docs/UNCERTAINTIES.md).
+- The fill ZONE control is an EXTENDED addition that stays available in CLASSIC (set it to ANYWHERE for the documented behaviour).
+- No physical MIDI hardware has been tested: MIDI was verified with simulated Web MIDI devices only. See [docs/MIDI.md](docs/MIDI.md) for what needs checking on real equipment.
+- The internal sounds were checked in code and in the browser, not by ear in automated tests.
 
 ## Licence
 

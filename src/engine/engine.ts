@@ -303,7 +303,7 @@ export class Engine {
     this.horizon = until;
     this.prune();
     items.sort((a, b) => a.tick - b.tick || order(a) - order(b));
-    return items;
+    return mergeSimultaneous(items);
   }
 
   private noteItem(ev: PerfEvent, plan: CyclePlan): NoteItem | null {
@@ -747,6 +747,41 @@ export class Engine {
     const r = mutate(src, lengths, geo, new Rng(hash32(this.project.seed, SALT.mutate, strCode(pattern.id), generation, 0)), pattern.evolve.strength / 100, pattern.evolve.targets);
     return summariseOps(r.ops);
   }
+}
+
+/**
+ * Several mechanisms can strike the same sound at the same instant (a fill
+ * borrowing a voice that has its own strike there, an extra hit on a fill
+ * slot, a jam over a written note). A drum hit twice at once is not a
+ * louder hit, so they become one note: the loudest, preferring a written
+ * strike. Items must be sorted by tick.
+ */
+export function mergeSimultaneous(items: EngineItem[]): EngineItem[] {
+  const out: EngineItem[] = [];
+  const at = new Map<string, number>();
+  let tick = Number.NaN;
+  for (const it of items) {
+    if (it.type !== 'note') {
+      out.push(it);
+      continue;
+    }
+    if (!(Math.abs(it.tick - tick) <= 1e-6)) {
+      at.clear();
+      tick = it.tick;
+    }
+    const key = `${it.channel}:${it.pitches.join('+')}`;
+    const i = at.get(key);
+    if (i === undefined) {
+      at.set(key, out.length);
+      out.push(it);
+      continue;
+    }
+    const prev = out[i] as NoteItem;
+    const keepNew = (it.kind === 'source' && prev.kind !== 'source') || (it.kind === prev.kind && it.velocity > prev.velocity) || (prev.kind !== 'source' && it.kind !== 'source' && it.velocity > prev.velocity);
+    const winner = keepNew ? it : prev;
+    out[i] = { ...winner, velocity: Math.max(it.velocity, prev.velocity), duration: Math.max(it.duration, prev.duration) };
+  }
+  return out;
 }
 
 function order(i: EngineItem): number {

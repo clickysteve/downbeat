@@ -27,6 +27,12 @@ simulated Web MIDI device in Chrome. See "Needs checking on real hardware".
   every id holding it is released, so voices or fills sharing a note never
   cut each other, and stale note-offs are ignored. A note struck while
   already held is preceded by a note-off (clean retrigger).
+- Simultaneous identical triggers are merged: when two mechanisms strike
+  the same channel and note at the same instant (a fill borrowing a voice
+  that has its own strike there, an extra hit on a fill slot, a jam over a
+  written note), one note is sent at the louder velocity, preferring the
+  written strike. A flam on the very first step cannot sound before the
+  start, so it merges into its strike.
 - Note-offs are queued until they fall inside the lookahead window.
 - **Stop** and **Panic** call `MIDIOutput.clear()` (where supported) to
   drop queued messages, then release every held note at once, including

@@ -116,8 +116,10 @@ describe('app actions', () => {
     app.keepBreed();
     expect(app.engine.audition).toBeNull();
     expect(app.project.patterns.length).toBe(3);
+    app.auditionBreed();
     app.setMode(false);
     expect(app.project.ext.enabled).toBe(false);
+    expect(app.engine.audition).toBeNull();
   });
 
   it('bad imports leave the project alone and say why', () => {

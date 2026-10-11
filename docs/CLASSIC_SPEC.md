@@ -67,7 +67,9 @@ space filled), **RATE** (fill speed relative to the grid: ½, 1, 2, 3, 4),
 fills may occur: anywhere, last bar, last half bar, last beat), and
 **FILL VELOCITY** weights over the five strikers. DOCUMENTED: sound, amount /
 probability, rate / speed, spacing, the number of beats a fill can occupy
-between written notes, fill velocity probabilities. ZONE is EXTENDED.
+between written notes, fill velocity probabilities. ZONE is an EXTENDED addition (tagged EXT in the
+interface) that remains available in CLASSIC; its default, ANYWHERE, is the
+documented behaviour.
 
 **INFERRED algorithm (v1), per cycle and track:**
 

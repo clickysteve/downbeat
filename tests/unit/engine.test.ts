@@ -101,10 +101,13 @@ describe('velocity, accents, sound steps, flam', () => {
     const p = pr.patterns[0]!;
     put(p, 's', [0, 4], 4, { f: true });
     const ns = notesOf(new Engine(pr).generate(CYCLE));
+    // On the very first step the grace note cannot sound before the start, so it
+    // coincides with the strike and is merged into it (one hit, not two).
     const flams = ns.filter((n) => n.kind === 'flam' && n.cycle === 0);
-    expect(flams.map((n) => n.tick)).toEqual([0, 23]);
+    expect(flams.map((n) => n.tick)).toEqual([23]);
+    expect(ns.filter((n) => n.tick === 0).length).toBe(1);
     const main = ns.find((n) => n.kind === 'source' && n.tick === 24)!;
-    expect(flams[1]!.velocity).toBeLessThan(main.velocity);
+    expect(flams[0]!.velocity).toBeLessThan(main.velocity);
   });
 });
 
@@ -368,7 +371,9 @@ describe('transport-level behaviour', () => {
     const e = new Engine(pr);
     e.setJam('s', 'roll');
     const ns = notesOf(e.generate(CYCLE));
-    expect(ns.filter((n) => n.kind === 'jam').length).toBe(16);
+    // 16 roll notes, one of which coincides with the written strike on step 4 and merges into it.
+    expect(ns.filter((n) => n.kind === 'jam').length).toBe(15);
+    expect(ns.filter((n) => n.tick === 24).map((n) => n.kind)).toEqual(['source']);
     e.setJam('s', null);
     expect(notesOf(e.generate(CYCLE * 2)).filter((n) => n.kind === 'jam').length).toBe(0);
   });
@@ -407,4 +412,26 @@ describe('transport-level behaviour', () => {
     expect(r.notes.length).toBe(6);
     expect(r.endTick).toBe(CYCLE * 3);
   });
+
+  it('overlapping mechanisms never strike the same sound twice at once', () => {
+    const pr = smallProject();
+    const p = pr.patterns[0]!;
+    put(p, 's', [4, 12], 5);
+    put(p, 't', [6, 7, 8, 9, 10]);
+    p.tracks.s!.fill = { ...p.tracks.s!.fill, on: true, amount: 100, max: 16, sound: 't' };
+    const e = new Engine(pr);
+    e.setJam('t', 'roll');
+    const ns = notesOf(e.generate(CYCLE * 2));
+    const seen = new Map<string, number>();
+    for (const n of ns) {
+      const k = `${n.channel}:${n.pitches.join()}:${n.tick}`;
+      seen.set(k, (seen.get(k) ?? 0) + 1);
+    }
+    expect([...seen].filter(([, c]) => c > 1)).toEqual([]);
+    // The written tom strike wins over the fill and the jam at the same step.
+    const at6 = ns.filter((n) => n.tick === 36 && n.pitches[0] === 45);
+    expect(at6.length).toBe(1);
+    expect(at6[0]!.kind).toBe('source');
+  });
 });
+

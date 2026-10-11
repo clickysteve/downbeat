@@ -60,7 +60,11 @@ in `[horizon, until)`, applying mute, solo and Jam at that moment (so they
 act within one lookahead window). Each cycle remembers which event keys it
 has sent, so re-realising a cycle after a change can never send a note
 twice. Early-shifted notes of the next cycle are covered by planning one
-quarter note ahead; nothing is placed before tick 0.
+quarter note ahead; nothing is placed before tick 0. Finally, notes that
+strike the same channel and pitch at the same tick are merged into one
+(`mergeSimultaneous`), so overlapping mechanisms never double a drum hit.
+Switching to CLASSIC also cancels a morph in progress and a breeding
+audition.
 
 ### Determinism
 

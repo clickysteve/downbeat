@@ -769,6 +769,11 @@ export class App {
   }
 
   setMode(ext: boolean): void {
+    if (!ext) {
+      // CLASSIC stops every Extended transformation, including ones in progress.
+      this.engine.cancelMorph();
+      this.engine.audition = null;
+    }
     this.project.ext.enabled = ext;
     this.touch(['mode', 'ext', 'pattern', 'perf']);
     this.setStatus(ext ? 'EXTENDED: probability, groove, evolution, rules and the autopilot are available.' : 'CLASSIC: UpBeat-style density, fills, velocity, loops and jam. Extended transformations are off.');
