@@ -385,6 +385,54 @@ test('drum map: change a voice\'s MIDI note by typing, by name and by LEARN; MID
   expect(errors).toEqual([]);
 });
 
+test('song playback: the grid follows without the banner flashing; FOLLOW off keeps your pattern; long patterns scroll with the playhead', async ({ page }) => {
+  const errors = await boot(page);
+  // The electro demo: a song of ELECTRO A and ELECTRO B. Make it alternate every bar.
+  await page.getByTestId('tab-song').click();
+  await page.getByTestId('song-rep-0').fill('1');
+  await page.getByTestId('song-rep-0').press('Enter');
+  await page.getByTestId('tempo').fill('200');
+  await page.getByTestId('tempo').press('Enter');
+  // Record the banner on every animation frame while the song plays.
+  await page.evaluate(() => {
+    const w = window as unknown as { __flashes: string[] };
+    w.__flashes = [];
+    const tick = () => {
+      const b = document.querySelector('[data-testid="grid-banner"]') as HTMLElement | null;
+      if (b && !b.hidden) w.__flashes.push(b.textContent ?? '');
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await page.getByTestId('play').click();
+  await page.waitForTimeout(4000);
+  const flashes = await page.evaluate(() => (window as unknown as { __flashes: string[] }).__flashes);
+  expect(flashes).toEqual([]);
+  // The grid followed both patterns.
+  await expect(page.getByTestId('follow')).toHaveClass(/on/);
+  // Choosing a pattern while the song plays turns FOLLOW off and the view stays put.
+  await page.getByTestId('pattern-ELECTRO B').click();
+  await expect(page.getByTestId('follow')).not.toHaveClass(/on/);
+  await page.waitForTimeout(1500);
+  await expect(page.getByTestId('pattern-ELECTRO B')).toHaveClass(/sel/);
+  await expect(page.getByTestId('grid-banner')).toContainText('YOU ARE EDITING ELECTRO B');
+  // FOLLOW on again: back to following the song.
+  await page.getByTestId('follow').click();
+  await expect(page.getByTestId('follow')).toHaveClass(/on/);
+  await page.getByTestId('stop').click();
+  // A 64-step pattern at phone width scrolls with the playhead while FOLLOW is on.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByTestId('side-mode-pattern').click();
+  await page.getByTestId('tab-pattern').click();
+  await page.getByTestId('bars-inc').click();
+  await page.getByTestId('bars-inc').click();
+  await page.getByTestId('bars-inc').click();
+  await page.getByTestId('play').click();
+  await page.waitForFunction(() => (document.querySelector('.gridwrap') as HTMLElement).scrollLeft > 100, null, { timeout: 8000 });
+  await page.getByTestId('stop').click();
+  expect(errors).toEqual([]);
+});
+
 test('responsive: usable at phone width without horizontal page scroll', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await boot(page);

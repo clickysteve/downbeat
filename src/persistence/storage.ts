@@ -44,6 +44,8 @@ export interface Prefs {
   /** Panels the musician left open. */
   tab: string;
   midiEnabled: boolean;
+  /** The grid follows the playing pattern (song) and scrolls with the playhead. */
+  follow: boolean;
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -55,6 +57,7 @@ export const DEFAULT_PREFS: Prefs = {
   volume: 0.8,
   tab: 'voice',
   midiEnabled: false,
+  follow: true,
 };
 
 export class Store {
@@ -140,6 +143,7 @@ export class Store {
         volume: typeof o.volume === 'number' ? Math.min(1, Math.max(0, o.volume)) : DEFAULT_PREFS.volume,
         tab: typeof o.tab === 'string' ? o.tab : DEFAULT_PREFS.tab,
         midiEnabled: o.midiEnabled === true,
+        follow: o.follow !== false,
       };
     } catch {
       return { ...DEFAULT_PREFS };

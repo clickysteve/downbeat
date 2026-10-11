@@ -1446,3 +1446,18 @@ input[type='range']:disabled {
     grid-template-columns: 1fr auto;
   }
 }
+
+.panel-t button.follow {
+  margin-left: 8px;
+  padding: 0 5px;
+  font-family: var(--mono);
+  font-size: 10px;
+  border-color: var(--paper);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.panel-t button.follow.on {
+  background: var(--paper);
+  color: var(--ink);
+}
