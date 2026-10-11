@@ -18,7 +18,7 @@ meant to sit beside external drum machines, samplers and modular systems
 
 ![DOWNBEAT playing the jungle demo](docs/images/downbeat.png)
 
-**Live:** <https://downbeat.allmyfriendsaresynths.com> (once deployed) ·
+**Live:** <https://downbeat.allmyfriendsaresynths.com> (deployed with GitHub Pages from `main`) ·
 **Quick Start:** [docs/QUICK_START.md](docs/QUICK_START.md)
 
 ## Inspiration
