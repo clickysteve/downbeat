@@ -26,6 +26,36 @@ export const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A',
 /** Note name with the octave numbering where middle C (60) is C3, as many drum machines use. */
 export const noteName = (n: number): string => `${NOTE_NAMES[((n % 12) + 12) % 12]}${Math.floor(n / 12) - 2}`;
 
+/**
+ * A note from text: a number (0-127) or a name in the same octave numbering
+ * as noteName (C3 = 60): "C1", "c#1", "Db1", "F#-1". Null if unreadable.
+ */
+export function parseNote(text: string): number | null {
+  const t = text.trim();
+  if (/^\d{1,3}$/.test(t)) {
+    const n = Number(t);
+    return n <= 127 ? n : null;
+  }
+  const m = /^([A-Ga-g])([#b]?)(-?\d)$/.exec(t);
+  if (!m) return null;
+  const base = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[m[1]!.toUpperCase() as 'C'];
+  const n = (Number(m[3]) + 2) * 12 + base + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0);
+  return n >= 0 && n <= 127 ? n : null;
+}
+
+/** A step (note or chord) from text: "36", "C1", "42+46", "F#1+A#1". Null if any part is unreadable. */
+export function parseNotes(text: string): number[] | null {
+  const parts = text.split(/[+, ]+/).filter(Boolean);
+  if (!parts.length || parts.length > 8) return null;
+  const out: number[] = [];
+  for (const p of parts) {
+    const n = parseNote(p);
+    if (n === null) return null;
+    out.push(n);
+  }
+  return out;
+}
+
 /** Human readable description of a message (for the MIDI monitor). */
 export function describe(bytes: readonly number[]): string {
   const [s = 0, a = 0, b = 0] = bytes;

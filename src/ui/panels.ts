@@ -11,8 +11,8 @@ import { SECTION_HELP, type Section } from '../extended/auto';
 import { BREED_LABEL, BREED_METHODS, type BreedMethod } from '../extended/breed';
 import { euclidStrikes, type EuclidAccent, type EuclidMode } from '../extended/euclid';
 import { ACTION_LABEL } from '../extended/rules';
-import { noteName } from '../midi/messages';
 import { button, clear, ext, h, section, seg, select, slider, stepper, toggle, weights, type Refreshers } from './dom';
+import { noteControl } from './notes';
 
 const LV = ['1', '2', '3', '4', 'A'];
 const FAMILIES: Family[] = ['kick', 'snare', 'clap', 'hat', 'openhat', 'tom', 'perc', 'cymbal'];
@@ -89,21 +89,21 @@ export class PanelsView {
     name.addEventListener('change', () => app.setVoice((x) => (x.name = name.value.trim().toUpperCase().slice(0, 12) || x.name), ['voices', 'pattern']));
     name.addEventListener('keydown', (e) => e.stopPropagation());
     const steps = h('div', { class: 'notes-list', testid: 'step-list' });
+    let controls: { refresh: () => void }[] = [];
+    let builtFor = '';
     const renderSteps = () => {
+      const key = `${v().id}:${v().notes.length}`;
+      if (key === builtFor) {
+        for (const c of controls) c.refresh();
+        return;
+      }
+      builtFor = key;
       clear(steps);
-      v().notes.forEach((n, i) => {
-        const inp = h('input', { type: 'text', value: n.join('+'), title: n.map(noteName).join('+'), testid: `step-${i + 1}`, 'aria-label': `sound step ${i + 1}` });
-        inp.addEventListener('keydown', (e) => e.stopPropagation());
-        inp.addEventListener('change', () => {
-          const notes = inp.value
-            .split(/[+, ]+/)
-            .map((x) => Number(x))
-            .filter((x) => Number.isFinite(x) && x >= 0 && x <= 127)
-            .slice(0, 8);
-          if (!notes.length) return;
-          app.setVoice((x) => (x.notes[i] = notes));
-        });
-        steps.append(h('span', { class: 'group' }, h('span', { class: 'lab', text: `S:${i + 1}` }), inp, v().notes.length > 1 ? button('×', () => app.setVoice((x) => x.notes.splice(i, 1)), { cls: 'tiny', help: 'Remove this step' }) : null));
+      controls = [];
+      v().notes.forEach((_, i) => {
+        const c = noteControl(app, v().id, i, `step-${i + 1}`);
+        controls.push(c);
+        steps.append(h('span', { class: 'group' }, h('span', { class: 'lab', text: `S:${i + 1}` }), c.el, v().notes.length > 1 ? button('×', () => app.setVoice((x) => x.notes.splice(i, 1)), { cls: 'tiny', help: 'Remove this step' }) : null));
       });
       if (v().notes.length < MAX_SOUND_STEPS) steps.append(button('+ STEP', () => app.setVoice((x) => x.notes.push([...(x.notes[x.notes.length - 1] ?? [36])].map((n) => Math.min(127, n + 1)))), { cls: 'tiny', help: 'Add a sound step (a note or chord, e.g. 42 or 42+46)', testid: 'add-step' }));
     };
@@ -122,7 +122,7 @@ export class PanelsView {
       section(
         'MIDI',
         stepper(r, { label: 'CHANNEL', min: 1, max: 16, get: () => v().channel, set: (c) => app.setVoice((x) => (x.channel = c)), help: 'MIDI channel for this voice (10 = General MIDI drums)', testid: 'voice-channel' }),
-        h('div', { class: 'ctl', help: 'The step list: each strike plays one step, chosen in the strike (S:1, S:2 ...) or at random (S:?). A step can be a chord: 42+46.' }, h('span', { class: 'lab', text: 'NOTES' }), steps),
+        h('div', { class: 'ctl ctl-notes', help: 'The MIDI note(s) this voice sends. With several steps, each strike plays one step, chosen in the strike (S:1, S:2 ...) or at random (S:?). A step can be a chord: 42+46. All voices at once: MIDI → DRUM MAP.' }, h('span', { class: 'lab', text: 'NOTE' }), steps),
         stepper(r, { label: 'GATE', min: 1, max: 96, get: () => v().gate, set: (g) => app.setVoice((x) => (x.gate = g)), fmt: (g) => `${g}`, help: 'Note length in clock ticks (24 per quarter). Most drum machines ignore it; gates and envelopes on modular systems do not.' }),
         stepper(r, { label: 'PROGRAM', min: -1, max: 127, get: () => v().program ?? -1, set: (p) => app.setVoice((x) => (x.program = p < 0 ? null : p)), fmt: (p) => (p < 0 ? 'OFF' : String(p)), help: 'Program change sent on this channel at Start (OFF = none)' }),
       ),

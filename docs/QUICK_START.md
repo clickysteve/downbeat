@@ -84,8 +84,10 @@ the song or a recorded take), and imports both.
 ## 6. Play external instruments
 
 Press **MIDI**, then **ENABLE MIDI**, choose the device, and set **SEND TO**
-to MIDI or BOTH. Each voice has its own channel and notes (VOICE tab;
-defaults are General MIDI drums on channel 10). **CLK OUT** sends 24 PPQN
+to MIDI or BOTH. Each voice has its own channel and note: the **DRUM MAP**
+in the same dialog lists every voice, so you can type the notes your drum
+machine or Hermod+ expects (`36` or `C1`), nudge them with − / +, or press
+**LEARN** and hit a pad. Defaults are General MIDI drums on channel 10. **CLK OUT** sends 24 PPQN
 clock with Start / Stop / Continue. To follow another instrument instead,
 choose its input and **CLOCK: EXTERNAL**.
 
