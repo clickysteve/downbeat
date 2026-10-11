@@ -28,6 +28,12 @@
   --v4: #7e22ce;
   --v5: #a16207;
   --v6: #0e7490;
+  --on-selection: #141412;
+  --on-activity: #f6f4ec;
+  --on-gen: #f6f4ec;
+  --on-warn: #f6f4ec;
+  --on-accent: #f6f4ec;
+  --on-play: #f6f4ec;
   --rule: color-mix(in srgb, var(--ink) 13%, var(--paper));
   --rule2: color-mix(in srgb, var(--ink) 28%, var(--paper));
   --well: color-mix(in srgb, var(--paper) 70%, #ffffff);
@@ -118,7 +124,7 @@ button.warn {
 
 button.warn:active {
   background: var(--warn);
-  color: var(--paper);
+  color: var(--on-warn);
 }
 
 button.big {
@@ -320,7 +326,7 @@ input[type='range']:disabled {
 .transport button[data-testid='play'].on {
   background: var(--activity);
   border-color: var(--ink);
-  color: var(--paper);
+  color: var(--on-activity);
 }
 
 .pos {
@@ -345,12 +351,12 @@ input[type='range']:disabled {
 
 .chip.run {
   background: var(--activity);
-  color: var(--paper);
+  color: var(--on-activity);
 }
 
 .chip.lost {
   background: var(--warn);
-  color: var(--paper);
+  color: var(--on-warn);
   animation: blink 1s steps(2, start) infinite;
 }
 
@@ -486,7 +492,7 @@ input[type='range']:disabled {
 
 .tool.sel {
   background: var(--selection);
-  color: var(--ink);
+  color: var(--on-selection);
   outline: 1px solid var(--ink);
 }
 
@@ -500,7 +506,7 @@ input[type='range']:disabled {
 .banner {
   padding: 3px 8px;
   background: var(--selection);
-  color: var(--ink);
+  color: var(--on-selection);
   border-bottom: 1px solid var(--ink);
   font-size: 11px;
   text-transform: uppercase;
@@ -508,7 +514,7 @@ input[type='range']:disabled {
 
 .banner.aud {
   background: var(--gen);
-  color: var(--paper);
+  color: var(--on-gen);
 }
 
 .grid {
@@ -558,7 +564,7 @@ input[type='range']:disabled {
 
 .snum.ph {
   background: var(--play);
-  color: var(--paper);
+  color: var(--on-play);
 }
 
 .vl {
@@ -597,7 +603,7 @@ input[type='range']:disabled {
 
 .vl.sel .name {
   background: var(--selection);
-  color: var(--ink);
+  color: var(--on-selection);
 }
 
 .vl.flash .tag {
@@ -619,18 +625,18 @@ input[type='range']:disabled {
 .vl button.ms.on[data-k='m'] {
   background: var(--warn);
   border-color: var(--warn);
-  color: var(--paper);
+  color: var(--on-warn);
 }
 
 .vl button.ms.on[data-k='s'] {
   background: var(--selection);
-  color: var(--ink);
+  color: var(--on-selection);
 }
 
 .vl button.ms.on[data-k='j'] {
   background: var(--gen);
   border-color: var(--gen);
-  color: var(--paper);
+  color: var(--on-gen);
 }
 
 .row {
@@ -1175,12 +1181,12 @@ input[type='range']:disabled {
 .perf button.on[data-testid='source'] {
   background: var(--accent);
   border-color: var(--accent);
-  color: var(--paper);
+  color: var(--on-accent);
 }
 
 .perf button.on[data-testid='lock'] {
   background: var(--selection);
-  color: var(--ink);
+  color: var(--on-selection);
 }
 
 .macro {

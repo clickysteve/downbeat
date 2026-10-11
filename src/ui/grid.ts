@@ -319,7 +319,7 @@ export class GridView {
     if (gm.length) help.push(`${gm.length} generated (${[...new Set(gm.map((m) => m.kind))].join(', ')})`);
     if (out) help.push('outside this track\'s loop');
     c.dataset.help = help.length ? help.join('; ') : 'Click to paint with the current striker; right-click erases; Alt-click flams; drag to paint a run.';
-    c.dataset.state = `${s ? 'hit' : 'empty'}${sup ? ' sup' : ''}${gm.length ? ' gen' : ''}${added ? ' added' : ''}`;
+    c.dataset.state = `${s ? 'hit' : 'empty'}${sup ? ' sup' : ''}${gm.length ? ' gen' : ''}${added ? ' added' : ''}${changed ? ' changed' : ''}`;
   }
 
   // ---------------------------------------------------------------- painting

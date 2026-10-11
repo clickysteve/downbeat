@@ -172,6 +172,7 @@ test('density: suppressed hits are shown, fewer notes play, the source is kept',
 
 test('Extended: evolution mutates while playing, the monitor shows the generation, SOURCE and CLASSIC return to the original', async ({ page }) => {
   await boot(page);
+  await page.getByTestId('side-mode-pattern').click();
   await page.getByTestId('mode-extended').click();
   await expect(page.getByTestId('tab-evolve')).toBeVisible();
   await page.getByTestId('tab-evolve').click();
@@ -182,7 +183,7 @@ test('Extended: evolution mutates while playing, the monitor shows the generatio
   await page.getByTestId('tempo').press('Enter');
   await page.getByTestId('play').click();
   await expect(page.getByTestId('now-generation')).not.toHaveText(/SOURCE|–/, { timeout: 8000 });
-  await expect(page.locator('.cell[data-state*="added"], .cell[data-state*="sup"]').first()).toBeVisible();
+  await expect(page.locator('.cell[data-state*="added"], .cell[data-state*="changed"], .cell[data-state*="sup"]').first()).toBeVisible();
   await expect(page.getByTestId('feed')).toContainText('GEN');
   await page.getByTestId('source').click();
   await expect(page.getByTestId('grid-banner')).toContainText('SOURCE ONLY');
@@ -190,7 +191,7 @@ test('Extended: evolution mutates while playing, the monitor shows the generatio
   await page.getByTestId('mode-classic').click();
   await expect(page.getByTestId('tab-evolve')).toHaveCount(0);
   await page.waitForTimeout(1500);
-  await expect(page.locator('.cell[data-state*="added"]')).toHaveCount(0);
+  await expect(page.locator('.cell[data-state*="added"], .cell[data-state*="changed"]')).toHaveCount(0);
   await page.getByTestId('stop').click();
 });
 
@@ -271,6 +272,19 @@ test('palettes change colours (never the music) and persist', async ({ page }) =
   await page.keyboard.press('Escape');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-palette', 'dark');
+  // In the 1-bit palette every filled control must still be readable.
+  await page.getByTestId('open-palette').click();
+  await page.getByTestId('palette-classic').click();
+  await page.keyboard.press('Escape');
+  await page.getByTestId('s-SNARE').click();
+  await page.getByTestId('lock').click();
+  for (const sel of ['.vl.sel .name', '.tool.sel', '.vl button.ms.on[data-k="s"]', '.perf button.on[data-testid="lock"]', '.banner', '.mode .seg button.on']) {
+    const c = await page.locator(sel).first().evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return [cs.color, cs.backgroundColor];
+    });
+    expect(c[0], sel).not.toBe(c[1]);
+  }
 });
 
 test('MIDI routing: clock out sends 24 PPQN and transport; unplugging the device is survived', async ({ page }) => {

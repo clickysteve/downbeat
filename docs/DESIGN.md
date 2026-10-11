@@ -100,3 +100,7 @@ MORPH, RULES, AUTO) appear after an EXTENDED divider.
 Built-in palettes: **Downbeat** (default: warm paper, signal orange for
 generated material, blue playhead), **Classic** (1-bit), **Dark**,
 **Colour**. Derived colours (rules, wells, washes) are `color-mix` of roles.
+Text on a filled role (selected tool, SOLO, LOCK, banners, PLAY) uses a
+computed on-colour (`--on-selection`, `--on-activity` ...): ink or paper,
+whichever contrasts more with that fill, so every palette (including 1-bit
+Classic, where the selection colour is black) stays readable.

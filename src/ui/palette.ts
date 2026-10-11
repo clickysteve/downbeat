@@ -220,8 +220,23 @@ export function contrastWarnings(c: Colors): ContrastWarning[] {
 
 // ---------------------------------------------------------------------------- CSS
 
+/** Roles used as fills, and the CSS name of the text colour that reads on them. */
+const FILLS: [Role, string][] = [
+  ['selection', '--on-selection'],
+  ['activity', '--on-activity'],
+  ['generated', '--on-gen'],
+  ['warning', '--on-warn'],
+  ['accent', '--on-accent'],
+  ['playhead', '--on-play'],
+];
+
+/** Ink or paper, whichever reads better on a fill colour. */
+export function onColor(c: Colors, fill: Role): string {
+  return contrast(c.ink, c[fill]) >= contrast(c.paper, c[fill]) ? c.ink : c.paper;
+}
+
 export function paletteCss(c: Colors): string {
-  const decl = ROLES.map((r) => `${ROLE_INFO[r].css}:${c[r]}`).join(';');
+  const decl = [...ROLES.map((r) => `${ROLE_INFO[r].css}:${c[r]}`), ...FILLS.map(([r, css]) => `${css}:${onColor(c, r)}`)].join(';');
   const scheme = luminance(c.paper) < 0.3 ? 'dark' : 'light';
   return `:root{${decl};color-scheme:${scheme}}`;
 }
