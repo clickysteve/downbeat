@@ -1,3 +1,5 @@
+import type { ProjectAudio } from '../audio/settings';
+
 /**
  * DOWNBEAT data model.
  *
@@ -260,6 +262,11 @@ export interface Project {
   current: string;
   ext: ExtSettings;
   notes: string;
+  /**
+   * Samples, choke groups and output processing (format 2). Absent until something is changed:
+   * then every sound is internal and nothing is processed, exactly as before format 2.
+   */
+  audio?: ProjectAudio;
 }
 
 /** Geometry of a pattern. */

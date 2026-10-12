@@ -103,9 +103,9 @@ export class PanelsView {
       v().notes.forEach((_, i) => {
         const c = noteControl(app, v().id, i, `step-${i + 1}`);
         controls.push(c);
-        steps.append(h('span', { class: 'group' }, h('span', { class: 'lab', text: `S:${i + 1}` }), c.el, v().notes.length > 1 ? button('×', () => app.setVoice((x) => x.notes.splice(i, 1)), { cls: 'tiny', help: 'Remove this step' }) : null));
+        steps.append(h('span', { class: 'group' }, h('span', { class: 'lab', text: `S:${i + 1}` }), c.el, v().notes.length > 1 ? button('×', () => app.removeSoundStep(v().id, i), { cls: 'tiny', help: 'Remove this step' }) : null));
       });
-      if (v().notes.length < MAX_SOUND_STEPS) steps.append(button('+ STEP', () => app.setVoice((x) => x.notes.push([...(x.notes[x.notes.length - 1] ?? [36])].map((n) => Math.min(127, n + 1)))), { cls: 'tiny', help: 'Add a sound step (a note or chord, e.g. 42 or 42+46)', testid: 'add-step' }));
+      if (v().notes.length < MAX_SOUND_STEPS) steps.append(button('+ STEP', () => app.addSoundStep(v().id), { cls: 'tiny', help: 'Add a sound step (a note or chord, e.g. 42 or 42+46)', testid: 'add-step' }));
     };
     r.push(renderSteps);
     renderSteps();

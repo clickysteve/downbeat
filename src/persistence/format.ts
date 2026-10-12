@@ -7,6 +7,7 @@
  * pattern. Problems are reported, never thrown, unless the file is not a
  * DOWNBEAT project at all.
  */
+import { repairAudio } from '../audio/settings';
 import { defaultEvolve, defaultExt, defaultFill, defaultVelocity, makeId, makeTrack, FAMILY_COLOR } from '../engine/defaults';
 import {
   FILL_RATES,
@@ -35,7 +36,7 @@ import {
 } from '../engine/types';
 
 export const PROJECT_FORMAT = 'downbeat-project';
-export const PROJECT_VERSION = 1;
+export const PROJECT_VERSION = 2;
 export const FILE_SUFFIX = '.downbeat.json';
 
 export class ProjectError extends Error {}
@@ -82,6 +83,11 @@ const MIGRATIONS: ((p: Obj, report: string[]) => Obj)[] = [
     report.push('Converted from the pre-release format (version 0): single notes became step lists.');
     return p;
   },
+  // 1 -> 2: an optional `audio` section (samples, choke groups, output processing). A project
+  // without one plays its internal sounds unprocessed, as before, so nothing changes here.
+  // The version number makes older DOWNBEATs refuse format 2 files instead of silently
+  // dropping their sample assignments.
+  (p) => p,
 ];
 
 /** Parse a project file's text. */
@@ -357,6 +363,7 @@ function repair(p: Obj, report: string[]): Project {
       phrase: num(ex.phrase, de.phrase, 1, 64, true),
     },
     notes: str(p.notes, '', 4000),
+    ...(p.audio !== undefined ? { audio: repairAudio(p.audio, voices) } : {}),
   };
 }
 
