@@ -20,7 +20,7 @@ export class TopBar {
   private syncChip = h('span', { class: 'chip', testid: 'sync-status' });
   private midiChip = h('span', { class: 'chip', testid: 'midi-status' });
 
-  constructor(private app: App, menus: { file: () => void; midi: () => void; palette: () => void; help: () => void }) {
+  constructor(private app: App, menus: { file: () => void; midi: () => void; palette: () => void; help: () => void; samples: () => void }) {
     this.playBtn = button('PLAY', () => app.togglePlay(), { cls: 'big', help: 'Play / pause (space bar). Pause keeps the position; PLAY again continues.', testid: 'play' });
     const stop = button('STOP', () => app.stop(), { cls: 'big', help: 'Stop and return to the start (Esc). All notes are released.', testid: 'stop' });
     const panic = button('PANIC', () => app.panic(), { cls: 'warn', help: 'All notes off on every MIDI channel', testid: 'panic' });
@@ -68,6 +68,7 @@ export class TopBar {
       h('div', { class: 'group' }, h('span', { class: 'lab', text: 'SYNC' }), this.syncChip),
       h('div', { class: 'group' }, clockOut, button('MIDI', menus.midi, { help: 'MIDI devices, clock and routing', testid: 'open-midi' }), this.midiChip),
       panic,
+      button('AUDIO', menus.samples, { help: 'Samples, output processing and audio (WAV) export', testid: 'open-audio' }),
       h('div', { class: 'group' }, button('FILE', menus.file, { help: 'New, demos, save, open, export and import (projects and MIDI files)', testid: 'open-file' }), button('PALETTE', menus.palette, { help: 'Colour palettes', testid: 'open-palette' }), button('?', menus.help, { help: 'Help and about DOWNBEAT', testid: 'open-help' })),
     );
     app.on(['transport', 'tempo', 'midi', 'mode', 'project'], () => this.refresh());

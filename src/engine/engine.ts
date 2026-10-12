@@ -43,6 +43,8 @@ export interface NoteItem {
   voice: string;
   /** Voice whose sound plays (fills may borrow another voice's sound). */
   sound: string;
+  /** Sound step of that voice (index into its step list) whose note or chord `pitches` holds. */
+  note: number;
   kind: EventKind;
   level: number;
   cycle: number;
@@ -309,7 +311,8 @@ export class Engine {
   private noteItem(ev: PerfEvent, plan: CyclePlan): NoteItem | null {
     const sound = this.project.voices.find((v) => v.id === ev.sound);
     if (!sound) return null;
-    const pitches = sound.notes[ev.note] ?? sound.notes[0] ?? [];
+    const note = sound.notes[ev.note] ? ev.note : 0;
+    const pitches = sound.notes[note] ?? [];
     if (!pitches.length) return null;
     return {
       type: 'note',
@@ -320,6 +323,7 @@ export class Engine {
       velocity: ev.velocity,
       voice: ev.voice,
       sound: ev.sound,
+      note,
       kind: ev.kind,
       level: ev.level,
       cycle: plan.index,
@@ -788,10 +792,20 @@ function order(i: EngineItem): number {
   return i.type === 'tempo' ? 0 : i.type === 'note' ? 1 : 2;
 }
 
-/** Render a performance offline (MIDI export): `cycles` cycles from Start. */
-export function renderCycles(project: Project, cycles: number, opts: { sourceOnly?: boolean } = {}): { notes: NoteItem[]; tempos: TempoItem[]; endTick: number } {
+/**
+ * Render a performance offline (MIDI and audio export): `cycles` cycles from Start. The
+ * optional engine state (LOCK, a breeding audition) is what PLAY would use with the same
+ * settings, so an export can reproduce it.
+ */
+export function renderCycles(
+  project: Project,
+  cycles: number,
+  opts: { sourceOnly?: boolean; lockKey?: number | null; audition?: Pattern | null } = {},
+): { notes: NoteItem[]; tempos: TempoItem[]; endTick: number } {
   const e = new Engine(project);
   e.sourceOnly = !!opts.sourceOnly;
+  e.lockKey = opts.lockKey ?? null;
+  e.audition = opts.audition ?? null;
   for (let c = 0; c < cycles; c++) if (!e.planNext()) break;
   const last = e.plans[e.plans.length - 1];
   const end = last ? endTick(last) : 0;

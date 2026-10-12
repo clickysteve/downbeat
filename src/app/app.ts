@@ -3,7 +3,16 @@
  * and every action the interface can take. Views subscribe to topics and
  * call actions; they never change the project directly.
  */
-import { DrumSynth } from '../audio/drums';
+import { cleanFx, WorkerTransformRunner, type AudioData, type OutputFxSettings, type SampleTransform, type TransformRunner } from '@slopfactory/core/dsp';
+import { RenderCancelled } from '@slopfactory/core/render';
+import type { DecodedSample, SampleZone } from '@slopfactory/core/sampler';
+import { IndexedDbSampleStore, type SampleStore } from '@slopfactory/core/storage';
+import { makeBundle, unpackBundle } from '../audio/bundle';
+import { exportAudio, type AudioExportOptions, type ExportResult } from '../audio/export';
+import { SampleLibrary } from '../audio/library';
+import { LiveAudio } from '../audio/live';
+import { audioOf, ensureAudio, parseSoundKey, referencedSamples, slotOf, syncAudioShape, type SoundChoke, type SoundSlot, type SoundSource } from '../audio/settings';
+import { OUTPUT_FX_WORKLET_URL, TRANSFORM_WORKER_URL } from '../audio/urls';
 import { EXTRA_VOICES, KIT, makeId, makePattern, makeVoice, newProject, syncTracks } from '../engine/defaults';
 import { AUDITION_ID, Engine, renderCycles, type NoteItem } from '../engine/engine';
 import { clonePattern, doubleLength, pasteStrikes, regrid, reverse, rotate } from '../engine/patternOps';
@@ -36,6 +45,7 @@ export type Topic =
   | 'ext'
   | 'song'
   | 'library'
+  | 'audio'
   | 'feed'
   | 'palette'
   | 'perf'
@@ -53,7 +63,14 @@ export interface AppDeps {
   now?: () => number;
   ticker?: Ticker;
   kv?: KV | null;
-  synth?: DrumSynth;
+  /** Sample storage (default: IndexedDB in the browser; null: none) */
+  sampleStore?: SampleStore | null;
+  /** Sample decoding, AudioBuffers and transformations (tests replace them) */
+  decode?: (bytes: ArrayBuffer, name: string) => Promise<DecodedSample>;
+  makeBuffer?: (audio: AudioData) => AudioBuffer;
+  transformRunner?: TransformRunner;
+  /** Core's output-processing AudioWorklet (null: no processing) */
+  workletUrl?: string | null;
   /** Download hook (tests capture files here). */
   download?: (name: string, data: Blob | string, type: string) => void;
 }
@@ -65,7 +82,12 @@ export class App {
   readonly engine: Engine;
   readonly out: MidiOutput;
   readonly sched: Scheduler;
-  readonly synth: DrumSynth;
+  /** Live internal audio (Slop Factory Core): internal sounds and samples. */
+  readonly audio: LiveAudio;
+  /** Samples of the drum sounds, shared by live audio and audio export. */
+  readonly library: SampleLibrary;
+  /** An audio export in progress. */
+  exporting: AbortController | null = null;
   readonly midi: MidiAccess;
   readonly store: Store;
   readonly palettes: PaletteStore;
@@ -75,7 +97,7 @@ export class App {
   status = '';
   statusKind: 'info' | 'warn' = 'info';
   /** Recording a take (every note played, for MIDI export). */
-  take: { recording: boolean; notes: NoteItem[]; startTick: number; tempo: number } = { recording: false, notes: [], startTick: 0, tempo: 120 };
+  take: { recording: boolean; notes: NoteItem[]; startTick: number; tempo: number; ms: number[] } = { recording: false, notes: [], startTick: 0, tempo: 120, ms: [] };
   /** Record strikes from the MIDI input while playing. */
   recArmed = false;
   /** MIDI LEARN in progress: the next incoming note is assigned here. */
@@ -95,6 +117,8 @@ export class App {
   private autosaveTimer: ReturnType<typeof setTimeout> | null = null;
   private now: () => number;
   private downloadFn: (name: string, data: Blob | string, type: string) => void;
+  private workletUrl: string | null;
+  private lastEdit: { key: string; at: number } | null = null;
   private lastHeardCycle = -1;
   private preview: { key: string; plan: CyclePlan | null } | null = null;
 
@@ -110,8 +134,14 @@ export class App {
     this.engine = new Engine(this.project);
     this.out = new MidiOutput(this.now);
     this.sched = new Scheduler(this.engine, this.out, this.now, deps.ticker ?? new WorkerTicker());
-    this.synth = deps.synth ?? new DrumSynth();
-    this.synth.volume = this.prefs.volume;
+    const store = deps.sampleStore !== undefined ? deps.sampleStore : typeof indexedDB !== 'undefined' ? new IndexedDbSampleStore('downbeat-samples') : null;
+    const runner = deps.transformRunner ?? (typeof Worker !== 'undefined' ? new WorkerTransformRunner(() => new Worker(TRANSFORM_WORKER_URL, { type: 'module' })) : undefined);
+    this.library = new SampleLibrary({ store, runner, decode: deps.decode, makeBuffer: deps.makeBuffer });
+    this.library.onChange = () => this.emit(['audio']);
+    this.workletUrl = deps.workletUrl !== undefined ? deps.workletUrl : OUTPUT_FX_WORKLET_URL;
+    this.audio = new LiveAudio(() => this.project, this.library, this.workletUrl);
+    this.audio.volume = this.prefs.volume;
+    if (this.project.audio) this.library.sync(this.project.audio);
     this.downloadFn = deps.download ?? browserDownload;
     this.sel.voice = this.project.voices[0]!.id;
     this.sel.tab = this.prefs.tab;
@@ -143,13 +173,13 @@ export class App {
     this.sched.on((e) => {
       if (e.type === 'transport') {
         if (e.state === 'stopped') {
-          this.synth.cancel();
+          this.audio.cancel();
           this.lastHeardCycle = -1;
           if (this.take.recording) this.stopTake();
         }
         this.emit(['transport']);
       } else if (e.type === 'note') {
-        this.onNote(e.note.item, e.note.ms);
+        this.onNote(e.note.item, e.note.ms, e.note.offMs);
       } else if (e.type === 'sync') {
         this.syncStatus = e.status;
         this.emit(['midi', 'transport']);
@@ -159,7 +189,7 @@ export class App {
         this.logMidi(`IN ${e.message}`);
       }
     });
-    this.out.onClear(() => this.synth.cancel());
+    this.out.onClear(() => this.audio.cancel());
     if (restored?.report.length) this.setStatus(`Restored your last session. ${restored.report.join(' ')}`);
     else if (restored) this.setStatus('Restored your last session.');
     else this.setStatus('Welcome to DOWNBEAT. Press PLAY (space bar), then change DENSITY or FILL on a voice.');
@@ -310,10 +340,17 @@ export class App {
     return JSON.stringify(this.project);
   }
 
-  /** Make an undoable edit. */
-  edit(fn: () => void, topics: Topic[] = ['pattern']): void {
-    this.undoStack.push(this.snapshot());
-    if (this.undoStack.length > UNDO_LIMIT) this.undoStack.shift();
+  /**
+   * Make an undoable edit. Edits with the same `coalesce` key in quick succession (a slider
+   * being dragged) make one undo step.
+   */
+  edit(fn: () => void, topics: Topic[] = ['pattern'], coalesce?: string): void {
+    const now = Date.now();
+    if (!coalesce || this.lastEdit?.key !== coalesce || now - this.lastEdit.at > 1500) {
+      this.undoStack.push(this.snapshot());
+      if (this.undoStack.length > UNDO_LIMIT) this.undoStack.shift();
+    }
+    this.lastEdit = coalesce ? { key: coalesce, at: now } : null;
     this.redoStack = [];
     fn();
     this.touch(topics);
@@ -352,8 +389,10 @@ export class App {
 
   private restore(s: string): void {
     const p = JSON.parse(s) as Project;
+    if (!p.audio) delete this.project.audio;
     Object.assign(this.project, p);
     this.fixSelection();
+    this.audioChanged();
     this.touch(['project', 'pattern', 'voices', 'track', 'song', 'ext', 'selection']);
   }
 
@@ -389,6 +428,7 @@ export class App {
     for (const k of Object.keys(this.project)) delete (this.project as unknown as Record<string, unknown>)[k];
     Object.assign(this.project, p);
     syncTracks(this.project);
+    this.audioChanged();
     this.sel.voice = this.project.voices[0]!.id;
     this.feed = [];
     this.touch(['project', 'pattern', 'voices', 'track', 'song', 'ext', 'selection', 'feed', 'perf', 'mode', 'tempo']);
@@ -571,6 +611,7 @@ export class App {
       if (used.has(v.name)) v.name = `${v.name.slice(0, 9)} ${this.project.voices.length + 1}`;
       this.project.voices.push(v);
       syncTracks(this.project);
+      if (this.project.audio) syncAudioShape(this.project.audio, this.project.voices);
       this.sel.voice = v.id;
     }, ['voices', 'pattern', 'track', 'selection']);
   }
@@ -583,8 +624,10 @@ export class App {
       for (const r of this.project.ext.rules) if (r.target === id) r.target = 'all';
       this.project.ext.rules = this.project.ext.rules.filter((r) => !(r.when.type === 'density' && r.when.voice === id));
       syncTracks(this.project);
+      if (this.project.audio) syncAudioShape(this.project.audio, this.project.voices);
       this.fixSelection();
-    }, ['voices', 'pattern', 'track', 'selection', 'ext']);
+    }, ['voices', 'pattern', 'track', 'selection', 'ext', 'audio']);
+    this.audioChanged();
   }
 
   moveVoice(id: string, dir: number): void {
@@ -699,7 +742,7 @@ export class App {
   // ------------------------------------------------------------------ transport
 
   async ensureAudio(): Promise<void> {
-    if (this.prefs.output !== 'midi') await this.synth.ensure();
+    if (this.prefs.output !== 'midi') await this.audio.ensure();
   }
 
   play(): void {
@@ -713,6 +756,7 @@ export class App {
     else if (this.sched.state === 'stopped') {
       this.feed = [];
       this.emit(['feed']);
+      this.audio.resetFx();
       this.sched.start();
     }
   }
@@ -732,7 +776,7 @@ export class App {
 
   panic(): void {
     this.out.panic();
-    this.synth.cancel();
+    this.audio.cancel();
     this.setStatus('PANIC: all notes off on all 16 channels.');
   }
 
@@ -977,12 +1021,12 @@ export class App {
 
   // ------------------------------------------------------------------ sound and MIDI
 
-  private onNote(item: NoteItem, ms: number): void {
-    if (this.prefs.output !== 'midi') {
-      const v = this.project.voices.find((x) => x.id === item.sound);
-      if (v) for (const p of item.pitches) this.synth.play(v, p, item.velocity, ms);
+  private onNote(item: NoteItem, ms: number, offMs?: number): void {
+    if (this.prefs.output !== 'midi') this.audio.play(item, ms, offMs);
+    if (this.take.recording && item.tick >= 0) {
+      this.take.notes.push(item);
+      this.take.ms.push(ms);
     }
-    if (this.take.recording && item.tick >= 0) this.take.notes.push(item);
     noteListeners.forEach((f) => f(item, ms));
   }
 
@@ -992,22 +1036,22 @@ export class App {
     void this.ensureAudio().then(() => {
       const t = this.track(id);
       const n = step <= 0 ? Math.floor(Math.random() * v.notes.length) : Math.min(step, v.notes.length) - 1;
-      this.sched.audition({ type: 'note', duration: v.gate, channel: v.channel, pitches: v.notes[n] ?? v.notes[0]!, velocity: t.vel.center[level - 1] ?? 100, voice: v.id, sound: v.id, kind: 'source', level });
+      this.sched.audition({ type: 'note', duration: v.gate, channel: v.channel, pitches: v.notes[n] ?? v.notes[0]!, velocity: t.vel.center[level - 1] ?? 100, voice: v.id, sound: v.id, note: v.notes[n] ? n : 0, kind: 'source', level });
     });
   }
 
   setOutput(o: Prefs['output']): void {
     this.prefs.output = o;
     this.store.savePrefs(this.prefs);
-    if (o === 'midi') this.synth.cancel();
-    else void this.synth.ensure();
+    if (o === 'midi') this.audio.cancel();
+    else void this.audio.ensure();
     this.applyRouting();
     if (o !== 'internal' && this.midi.state !== 'ready') void this.enableMidi();
   }
 
   setVolume(v: number): void {
     this.prefs.volume = clamp(v, 0, 1);
-    this.synth.setVolume(this.prefs.volume);
+    this.audio.setVolume(this.prefs.volume);
     this.store.savePrefs(this.prefs);
     this.emit(['midi']);
   }
@@ -1314,7 +1358,7 @@ export class App {
   }
 
   startTake(): void {
-    this.take = { recording: true, notes: [], startTick: Math.floor(this.engine.horizon), tempo: this.sched.bpm };
+    this.take = { recording: true, notes: [], startTick: Math.floor(this.engine.horizon), tempo: this.sched.bpm, ms: [] };
     if (this.sched.state === 'stopped') {
       this.take.startTick = 0;
       this.play();
@@ -1325,8 +1369,219 @@ export class App {
 
   stopTake(): void {
     this.take.recording = false;
-    this.setStatus(`Take recorded: ${this.take.notes.length} notes. Export it from FILE → MIDI.`);
+    this.setStatus(`Take recorded: ${this.take.notes.length} notes. Export it from FILE → MIDI, or as audio (EXPORT AUDIO).`);
     this.emit(['perf']);
+  }
+
+  // ------------------------------------------------------------------ samples, processing, audio export
+
+  /** After the audio settings changed or the project was replaced: bring samples and live audio up to date. */
+  audioChanged(): void {
+    if (this.project.audio) syncAudioShape(this.project.audio, this.project.voices);
+    this.library.sync(audioOf(this.project));
+    this.audio.sync();
+    this.emit(['audio']);
+  }
+
+  /** The settings of a drum sound (voice sound step), defaults included. */
+  sound(key: string): SoundSlot | null {
+    return slotOf(audioOf(this.project), key);
+  }
+
+  /** Change a drum sound's settings (undoable). */
+  setSound(key: string, fn: (s: SoundSlot) => void, coalesce?: string): void {
+    const k = parseSoundKey(key);
+    const v = k && this.project.voices.find((x) => x.id === k.voice);
+    if (!k || !v || k.step >= v.notes.length) return;
+    this.edit(
+      () => {
+        const slot = ensureAudio(this.project).sounds[k.voice]?.[k.step];
+        if (slot) fn(slot);
+      },
+      ['audio'],
+      coalesce && `${key}:${coalesce}`,
+    );
+    this.audioChanged();
+  }
+
+  setSoundSource(key: string, source: SoundSource): void {
+    this.setSound(key, (s) => (s.source = source));
+  }
+
+  setSoundZone(key: string, patch: Partial<SampleZone>): void {
+    this.setSound(key, (s) => (s.zone = { ...s.zone, ...patch }), `zone:${Object.keys(patch).join(',')}`);
+  }
+
+  setSoundTransform(key: string, patch: Partial<SampleTransform>): void {
+    this.setSound(key, (s) => (s.transform = { ...s.transform, ...patch }), `transform:${Object.keys(patch).join(',')}`);
+  }
+
+  setSoundChoke(key: string, patch: Partial<SoundChoke>): void {
+    this.setSound(key, (s) => (s.choke = { ...s.choke, ...patch }));
+  }
+
+  /** Decode, store and assign a sample file to a drum sound (which then plays SAMPLE). */
+  async loadSample(key: string, file: { bytes: ArrayBuffer; name: string; type?: string }): Promise<boolean> {
+    if (!this.sound(key)) return false;
+    try {
+      const r = await this.library.importFile(file.bytes, file.name, file.type ?? '');
+      this.setSound(key, (s) => {
+        s.sampleId = r.id;
+        s.name = file.name;
+        s.source = 'sample';
+      });
+      this.setStatus(`Loaded "${file.name}".${r.warnings.length ? ' ' + r.warnings.join(' ') : ''}`, r.warnings.length ? 'warn' : 'info');
+      return true;
+    } catch (e) {
+      this.setStatus(e instanceof Error ? e.message : String(e), 'warn');
+      return false;
+    }
+  }
+
+  /** Remove a drum sound's sample: it plays its internal sound again. */
+  clearSample(key: string): void {
+    this.setSound(key, (s) => {
+      s.sampleId = null;
+      s.name = '';
+      s.source = 'internal';
+    });
+  }
+
+  /** Play one drum sound now through its voice (processing included). */
+  auditionSound(key: string): void {
+    void this.audio.ensure().then((ok) => {
+      if (!ok) this.setStatus('Audio is not available in this browser.', 'warn');
+      else this.audio.audition(key);
+    });
+  }
+
+  /** Output processing of a sequencer voice (undoable). */
+  setVoiceFx(voiceId: string, fx: OutputFxSettings, coalesce?: string): void {
+    if (!this.project.voices.some((v) => v.id === voiceId)) return;
+    this.edit(() => (ensureAudio(this.project).voiceFx[voiceId] = structuredClone(fx)), ['audio'], coalesce && `fx:${voiceId}:${coalesce}`);
+    this.audioChanged();
+  }
+
+  /** Master output processing (undoable). */
+  setMasterFx(fx: OutputFxSettings, coalesce?: string): void {
+    this.edit(() => (ensureAudio(this.project).master = structuredClone(fx)), ['audio'], coalesce && `fx:master:${coalesce}`);
+    this.audioChanged();
+  }
+
+  /** Every voice and the master back to CLEAN. */
+  clearProcessing(): void {
+    if (!this.project.audio) return;
+    this.edit(() => {
+      const a = ensureAudio(this.project);
+      for (const id of Object.keys(a.voiceFx)) a.voiceFx[id] = cleanFx();
+      a.master = cleanFx();
+    }, ['audio']);
+    this.audioChanged();
+  }
+
+  /** Add a sound step to a voice (a note one above the last); its drum sound starts INTERNAL. */
+  addSoundStep(voiceId = this.sel.voice): void {
+    const v = this.project.voices.find((x) => x.id === voiceId);
+    if (!v || v.notes.length >= 16) return;
+    this.edit(() => {
+      v.notes.push([...(v.notes[v.notes.length - 1] ?? [36])].map((n) => Math.min(127, n + 1)));
+      if (this.project.audio) syncAudioShape(this.project.audio, this.project.voices);
+    }, ['voices', 'track', 'audio']);
+    this.audioChanged();
+  }
+
+  /** Remove a voice's sound step and its drum sound settings (the steps after it move up). */
+  removeSoundStep(voiceId: string, step: number): void {
+    const v = this.project.voices.find((x) => x.id === voiceId);
+    if (!v || v.notes.length <= 1 || step < 0 || step >= v.notes.length) return;
+    this.edit(() => {
+      v.notes.splice(step, 1);
+      this.project.audio?.sounds[voiceId]?.splice(step, 1);
+      if (this.project.audio) syncAudioShape(this.project.audio, this.project.voices);
+    }, ['voices', 'track', 'audio']);
+    this.audioChanged();
+  }
+
+  /** Render audio and download it (a WAV, or a ZIP of several). */
+  async exportAudio(opts: AudioExportOptions, onProgress?: (fraction: number, stage: string) => void): Promise<ExportResult | null> {
+    if (this.exporting) return null;
+    const ac = new AbortController();
+    this.exporting = ac;
+    this.emit(['audio']);
+    try {
+      const state = { lockKey: this.engine.lockKey, sourceOnly: this.engine.sourceOnly, audition: this.engine.audition };
+      const take = this.take.notes.length ? { notes: this.take.notes, ms: this.take.ms, startTick: this.take.startTick, tempo: this.take.tempo } : null;
+      const r = await exportAudio(this.project, this.library, opts, state, take, { workletUrl: this.workletUrl, volume: this.prefs.volume, onProgress, signal: ac.signal });
+      this.downloadFn(r.download.name, new Blob([r.download.bytes as BlobPart], { type: r.download.type }), r.download.type);
+      const clipped = r.files.filter((f) => f.stats.clipped > 0);
+      const unprocessed = r.renders.some((x) => !x.processed) && this.usesProcessing();
+      this.setStatus(
+        `Exported ${r.download.name}: ${r.files.length} WAV file${r.files.length > 1 ? 's' : ''}, ${r.renders[0]!.seconds.toFixed(1)} s.` +
+          (clipped.length ? ` ${clipped.length} file${clipped.length > 1 ? 's' : ''} clipped (not normalised): ${clipped.map((f) => f.name).join(', ')}.` : '') +
+          (unprocessed ? ' Output processing could not run in this browser, so the files are unprocessed.' : ''),
+        clipped.length || unprocessed ? 'warn' : 'info',
+      );
+      return r;
+    } catch (e) {
+      this.setStatus(e instanceof RenderCancelled ? 'Audio export cancelled.' : e instanceof Error ? e.message : String(e), 'warn');
+      return null;
+    } finally {
+      this.exporting = null;
+      this.emit(['audio']);
+    }
+  }
+
+  cancelExport(): void {
+    this.exporting?.abort();
+  }
+
+  /** Whether any voice or the master has output processing switched on. */
+  usesProcessing(): boolean {
+    const a = this.project.audio;
+    if (!a) return false;
+    const on = (fx: OutputFxSettings) => !fx.bypass && (fx.outputStage.enabled || fx.drive.enabled || fx.crunch.enabled || fx.tone.enabled || fx.inDb !== 0 || fx.outDb !== 0);
+    return on(a.master) || Object.values(a.voiceFx).some(on);
+  }
+
+  /** Download a portable bundle: the project and every sample it uses. */
+  async downloadBundle(): Promise<void> {
+    const b = await makeBundle(this.project, this.library.store);
+    this.downloadFn(b.name, new Blob([b.bytes as BlobPart], { type: 'application/zip' }), 'application/zip');
+    this.setStatus(`Exported ${b.name}${b.missing.length ? `. Not in this browser, so not included: ${b.missing.join(', ')}.` : '.'}`, b.missing.length ? 'warn' : 'info');
+  }
+
+  /** Open a portable bundle: its samples go into this browser's storage, then the project opens. */
+  async openBundle(bytes: Uint8Array): Promise<boolean> {
+    try {
+      const r = await unpackBundle(bytes, this.library.store);
+      const loaded = parseProject(r.projectText);
+      this.library.retry();
+      this.loadProjectObject(loaded.project, `Opened bundle "${loaded.project.name}" (${r.stored} sample${r.stored === 1 ? '' : 's'}).${[...loaded.report, ...r.problems].length ? ' ' + [...loaded.report, ...r.problems].join(' ') : ''}`);
+      return true;
+    } catch (e) {
+      this.setStatus(e instanceof Error ? e.message : 'Could not read that bundle.', 'warn');
+      return false;
+    }
+  }
+
+  /** Delete stored samples that neither this project, the autosave nor any saved project uses. */
+  async purgeSamples(): Promise<number> {
+    const store = this.library.store;
+    if (!store) return 0;
+    const keep = new Set(referencedSamples(this.project.audio));
+    const autosave = this.store.loadAutosave();
+    for (const id of referencedSamples(autosave?.project.audio)) keep.add(id);
+    for (const e of this.store.library()) for (const id of referencedSamples(this.store.loadFromLibrary(e.name)?.project.audio)) keep.add(id);
+    let n = 0;
+    for (const m of await store.list()) {
+      if (keep.has(m.id)) continue;
+      await store.delete(m.id);
+      this.library.forget(m.id);
+      n++;
+    }
+    this.setStatus(n ? `Deleted ${n} unused sample${n > 1 ? 's' : ''} from this browser.` : 'No unused samples.');
+    this.emit(['audio']);
+    return n;
   }
 
   // ------------------------------------------------------------------ palette

@@ -80,13 +80,29 @@ pattern while the song carries on; click FOLLOW to follow the song again.
 | **SOURCE** | A/B: only what you wrote, nothing generated or resting |
 | **LOCK** | every cycle repeats the variation you are hearing |
 | **CAPTURE** | write what you hear into a new pattern (generated notes on grid steps included; notes between steps cannot be strikes and are left out) |
-| **REC TAKE** | record everything that plays, for MIDI export |
+| **REC TAKE** | record everything that plays, for MIDI or audio export |
 
 Your work autosaves in the browser. **FILE** saves named projects, exports
 `.downbeat.json` files and MIDI files (the written pattern, the performance,
 the song or a recorded take), and imports both.
 
-## 6. Play external instruments
+## 6. Samples and audio export
+
+Press **AUDIO**. In the **SAMPLE BANK**, click a drum sound (for example **SNARE 1**) and press
+**LOAD…**, or drop a WAV file on its row: the snare now plays your sample. **HEAR** plays it.
+Set its volume, pan, tune and mode below; **CHOKE** decides what it cuts (a closed hat cutting an
+open hat is already set up as **AUTO**). **TRANSFORM** stretches, pitches, reverses or crunches
+the sample itself.
+
+**PROCESSING** adds Good Bits character to a voice or the master: try the **BITCRUSH** preset on
+the master, or **CASSETTE**.
+
+**EXPORT AUDIO** renders what DOWNBEAT plays to WAV: a pattern for some cycles, the song, or a
+take you recorded with **REC TAKE**. Choose **MASTER + STEMS** and **STEMS BY: SEQUENCER VOICE**,
+**DRUM SOUND** or **BOTH** for files that line up in any DAW. **FILE → DOWNLOAD BUNDLE** keeps a
+project together with its samples. More: [AUDIO.md](AUDIO.md).
+
+## 7. Play external instruments
 
 Press **MIDI**, then **ENABLE MIDI**, choose the device, and set **SEND TO**
 to MIDI or BOTH. Each voice has its own channel and note: the **DRUM MAP**
