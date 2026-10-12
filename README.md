@@ -54,6 +54,25 @@ same take; NEW VARIATION changes the seed, LOCK repeats the variation you
 hear, SOURCE plays only what you wrote, CAPTURE writes what you hear into a
 new pattern.
 
+## Samples, processing and audio export
+
+The **AUDIO** button opens three windows:
+
+- **SAMPLE BANK**: every drum sound (each sound step of each voice) plays its voice's internal
+  sound or a **sample** you load or drop in: volume, pan, tuning, one-shot / gated / loop,
+  **choke groups** (a closed hat cutting an open hat; AUTO keeps DOWNBEAT's original hat choke)
+  and **sample transformations** (Good Bits stretch, varispeed, reverse, drive, crunch).
+- **PROCESSING**: Good Bits output processing per voice and on the master (output stages,
+  drive, crunch, tone), before VOLUME and DOWNBEAT's master compressor.
+- **EXPORT AUDIO**: a pattern, the song or a recorded take as WAV (44.1 kHz, 16-bit): the master,
+  **stems per sequencer voice**, **stems per drum sound**, or all of them in one ZIP. Every file
+  is sample-aligned and the same length.
+
+Samples stay in the browser (IndexedDB); **FILE → DOWNLOAD BUNDLE** carries a project with its
+samples to another browser. Old projects open unchanged and sound as before. All of this is
+**[Slop Factory Core](https://github.com/clickysteve/slopfactory-core)**, the audio package
+DOWNBEAT shares with ANVIL. Details: [docs/AUDIO.md](docs/AUDIO.md).
+
 ## Demos
 
 Six original demos (FILE → DEMOS): Basic Electro, Four to the Floor,
@@ -62,8 +81,11 @@ Broken Beat, Jungle Pressure, Minimal Generative, Polymetric Percussion.
 ## Running it
 
 ```bash
-npm install
+npm ci
 ```
+
+This installs the pinned version of Slop Factory Core from its git tag (see `package.json` and
+`package-lock.json`); nothing else is needed and nothing is fetched at run time.
 
 ```bash
 npm run dev
@@ -73,19 +95,21 @@ Then open the address Vite prints. Other scripts:
 
 | Command | |
 | --- | --- |
-| `npm test` | unit tests (Vitest): engine, MIDI and transport, persistence, palettes |
+| `npm test` | unit tests (Vitest): engine, MIDI and transport, persistence, palettes, audio settings, event adapter, export planning |
 | `npm run typecheck` | TypeScript |
 | `npm run build` | production build in `dist/` (relative paths: works at any address) |
-| `npm run test:e2e` | browser tests (Playwright) against the built site, using the installed Google Chrome locally |
+| `npm run test:e2e` | browser tests (Playwright) against the built site, using the installed Google Chrome locally (or `DOWNBEAT_CHROMIUM=/path/to/chromium`): the instrument, the audio windows with real WAV/ZIP downloads, and measured audio verification |
 
 Web MIDI needs Chrome, Edge, Opera or Firefox. Internal sounds work in any
-modern browser.
+modern browser; output processing needs AudioWorklet (https or localhost). Audio export is
+tested in Chromium.
 
 ## Documentation
 
 - [Quick Start](docs/QUICK_START.md)
 - [Historical research](docs/HISTORICAL_RESEARCH.md), [Classic spec](docs/CLASSIC_SPEC.md), [Uncertainties](docs/UNCERTAINTIES.md), [Sources](docs/SOURCES.md)
 - [Extended spec](docs/EXTENDED_SPEC.md)
+- [Samples, processing and audio export](docs/AUDIO.md), [Audio verification](docs/AUDIO-VERIFICATION.md)
 - [Architecture](docs/ARCHITECTURE.md), [Design](docs/DESIGN.md), [MIDI and sync](docs/MIDI.md)
 
 ## How historical is CLASSIC?
@@ -107,6 +131,10 @@ output.
 - The fill ZONE control is an EXTENDED addition that stays available in CLASSIC (set it to ANYWHERE for the documented behaviour).
 - No physical MIDI hardware has been tested: MIDI was verified with simulated Web MIDI devices only. See [docs/MIDI.md](docs/MIDI.md) for what needs checking on real equipment.
 - The internal sounds were checked in code and in the browser, not by ear in automated tests.
+- Audio: one sample per drum sound (no layers or zones); processing is per voice and master,
+  not per drum sound; drum-sound stems leave out voice processing (it cannot be split exactly by
+  sound); external MIDI instruments are not rendered; exports up to 20 minutes; tested in
+  Chromium only. See [docs/AUDIO.md](docs/AUDIO.md).
 
 ## Licence
 

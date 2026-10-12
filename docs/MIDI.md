@@ -150,3 +150,14 @@ AudioContext clock from the same millisecond timestamps as MIDI.
 - Note-off handling on devices that ignore or require note-offs; gate
   lengths on modular systems.
 - Program change and channel mapping on specific drum machines.
+
+## MIDI and the audio work (Slop Factory Core)
+
+The samples, processing and audio export added with Slop Factory Core change nothing about MIDI:
+MIDI output sends the same notes, channels, clock and transport as before, and the internal
+sounds (now possibly samples) are heard only with OUT set to INT or BOTH. Audio export renders
+DOWNBEAT's own sounds, never external instruments. Slop Factory Core contains MIDI *interfaces*
+only; DOWNBEAT's MIDI code (access, note-safe output, scheduler, clock in and out, Song Position,
+SMF) remains its own. Core's MIDI roadmap (`docs/MIDI-ROADMAP.md` there) proposes DOWNBEAT's
+`MidiAccess`, `MidiOutput` and pulse-locked clock follower with Song Position as sources for the
+shared modules.

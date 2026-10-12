@@ -1,7 +1,9 @@
 # Architecture
 
-TypeScript, Vite, no UI framework, one runtime dependency (the Silkscreen
-font). Source layout:
+TypeScript, Vite, no UI framework. Runtime dependencies: the Silkscreen font and
+**Slop Factory Core** (`@slopfactory/core`, installed from a version tag of
+<https://github.com/clickysteve/slopfactory-core> and bundled into the static build), the
+audio package DOWNBEAT shares with ANVIL. Source layout:
 
 | Path | Role |
 | --- | --- |
@@ -14,10 +16,14 @@ font). Source layout:
 | `src/extended/` | Mutation, morph, breeding, Euclid, rules, autopilot |
 | `src/scheduler/` | Lookahead scheduler, transport, clock out, external clock, pulse estimator |
 | `src/midi/` | Message helpers, note-safe output, Web MIDI access, Standard MIDI Files |
-| `src/audio/drums.ts` | Synthesised internal drum voices (Web Audio) |
+| `src/audio/drums.ts` | Synthesised internal drum voices (Web Audio), as a Core `Instrument` |
+| `src/audio/settings.ts` | Audio settings (format 2): drum sounds, choke groups, processing; repair |
+| `src/audio/timeline.ts` | **Adapter**: the engine's notes to Core timelines, by sequencer voice or by drum sound |
+| `src/audio/routing.ts` | Which instrument plays a drum sound, choke groups, voice strips, the master compressor |
+| `src/audio/library.ts`, `live.ts`, `export.ts`, `bundle.ts` | Samples (Core storage and sampler), live audio, EXPORT AUDIO, portable bundles |
 | `src/persistence/` | Project format, migration and repair; browser storage; demos |
 | `src/app/app.ts` | Application state and every action; wiring of engine, scheduler, MIDI, sound |
-| `src/ui/` | Views (grid, tools, panels, monitor, top bar, side, dialogs), palette, styles |
+| `src/ui/` | Views (grid, tools, panels, monitor, top bar, side, dialogs, audio windows), palette, styles |
 
 ## Source and performance
 
@@ -102,7 +108,7 @@ The scheduler (`src/scheduler/scheduler.ts`) maps ticks to
 dedicated Worker (background tabs throttle it far less than main-thread
 timers) pumps every 25 ms and schedules everything up to now + 100 ms; MIDI
 goes to Web MIDI with absolute timestamps and internal sounds are mapped to
-the AudioContext clock with `getOutputTimestamp()`. No wall-clock timer ever
+the AudioContext clock with `getOutputTimestamp()` (the original mapping, unchanged). No wall-clock timer ever
 decides musical time; the animation loop only draws what is heard.
 
 | Action | Engine | Scheduler | MIDI (CLOCK OUT on) |
@@ -116,10 +122,43 @@ decides musical time; the animation loop only draws what is heard.
 
 External clock, note safety, panic and device handling: see [MIDI.md](MIDI.md).
 
+## Internal audio (Slop Factory Core)
+
+Internal sounds and samples are played and rendered by Slop Factory Core; see
+[AUDIO.md](AUDIO.md) for what the user sees and [AUDIO-VERIFICATION.md](AUDIO-VERIFICATION.md)
+for the measurements.
+
+```
+scheduler note (NoteItem: voice, sound, step, pitches, velocity)
+  live:   LiveAudio.play -> Core NotePlayer (choke groups) -> instrument for the drum sound
+  export: renderCycles / recorded take -> timeline adapter -> Core renderTimeline (same objects)
+
+instrument: DrumInstrument (internal synthesis) or StepSample (Core SampleInstrument)
+  -> Core Mixer strip of the sequencer voice (voice processing: Good Bits output engine)
+  -> master bus -> master processing -> VOLUME -> DOWNBEAT master compressor -> output
+```
+
+- **Voice and sound.** `NoteItem.sound` (the voice whose sound plays) and `NoteItem.note` (its
+  sound step) name the drum sound of every note; the adapter writes it as the Core instrument key
+  `<voice id>#<step>`. The Core `voice` (routing key) is the sequencer voice for the master and
+  voice stems, or the drum sound for drum-sound stems: same events, different grouping.
+- **Timing.** Core ticks are integers; DOWNBEAT uses 96 000 per quarter (4 000 per engine tick),
+  so swing, groove, shifts and flams keep their positions to about 3 µs at 120 BPM. Tempo follows
+  the project tempo and the engine's pattern-tempo items, as the scheduler does.
+- **Determinism.** Exports freeze `renderCycles` (with LOCK, SOURCE and an auditioned breed
+  applied, as PLAY would) or the recorded take; nothing is regenerated while rendering. Mute and
+  solo are applied by the engine (muted voices have no events), so Core's mixer strips stay
+  unmuted.
+- **Choke groups** are Core's. AUTO maps DOWNBEAT's original rule (HAT cuts OPEN HAT, one way, 8 ms
+  time constant) onto a Core group, so it holds for internal sounds, samples, live and export.
+- **The master compressor** stays DOWNBEAT's own node, inserted after Core's master stage live
+  and through Core's `masterInsert` in exports. Its look-ahead is measured and removed
+  (`masterLatencyFrames`), and exports render a 0.25 s pre-roll so it starts settled.
+
 ## Application and views
 
 `App` owns the project, the engine, the scheduler, MIDI output, Web MIDI
-access, the internal synth, storage and palettes. Views subscribe to topics
+access, the internal audio (`LiveAudio`) and sample library, storage and palettes. Views subscribe to topics
 (`pattern`, `voices`, `track`, `selection`, `transport`, `midi`, `ext`,
 `feed`, ...) and call App actions. Undo snapshots the project (60 levels; a
 drag is one step). Panel controls are built once and refreshed in place, so
@@ -132,14 +171,17 @@ note events' sounding times, not their scheduling times.
 
 ## Persistence
 
-`{format: "downbeat-project", version: 1, savedAt, project}`. Loading
+`{format: "downbeat-project", version: 2, savedAt, project}`. Loading
 migrates (version 0, the pre-release bare-object shape, is converted and
-reported), then validates and repairs: numbers clamped, missing parts
+reported; version 1 needs no change, because version 2 only adds the optional
+`audio` section), then validates and repairs: numbers clamped, missing parts
 defaulted, unknown fields dropped, strikes resized to their pattern,
 references to missing voices and patterns removed. The current project
 autosaves 600 ms after changes and on page hide; named projects live in a
 browser library. Preferences (output routing, devices, clock, volume, tab)
-and palettes are browser preferences, never part of a project.
+and palettes are browser preferences, never part of a project. Samples are stored in IndexedDB
+(`downbeat-samples`, Core's content-addressed store); projects refer to them by SHA-256 and
+portable `.downbeatpack` bundles carry both.
 
 ## Testing
 
@@ -149,4 +191,7 @@ and palettes are browser preferences, never part of a project.
 | `tests/unit/extended.test.ts` | Euclid, mutation strength, evolution ORIGINAL vs EVOLVING, drift guard, reset and lock, breeding, morph monotonicity and completion, rules (conditions, fill, mute, no recursion), autopilot, swing, groove only in EXTENDED, probability |
 | `tests/unit/scheduler.test.ts` | clock out at 24 PPQN, Start / Stop / Continue / Song Position, pause and resume, note pairing, stop cancellation (with and without `clear()`), tempo changes, pattern tempo, song end, device change, panic, program changes, external clock (clock while stopped, FA, FC, FB, F2, loss, tempo estimate, no echo) |
 | `tests/unit/persistence.test.ts` | save / load equality and identical playback, locked variations, invalid files, repair, v0 migration, storage failures, demos, palettes |
+| `tests/unit/audio.test.ts` | audio settings and their migration, the event adapter (equal to the engine note for note; fills, flams, shifts, chords, tempo, takes), export planning (names, ranges, determinism, LOCK / SOURCE, the project untouched), routing and choke groups, sample loading in the App, bundles, purge |
 | `tests/e2e/downbeat.spec.ts` | the built site in Chrome with a simulated Web MIDI device (see README) |
+| `tests/e2e/audio.spec.ts` | the audio windows: sample bank, processing, export with real WAV/ZIP downloads, reloads, missing samples, bundles, old projects, keys, phone width |
+| `tests/e2e/audio-verify.spec.ts` | measured audio: timing, alignment, chokes, pitch, velocity, pan, processing, voice and drum-sound stems, song, tails, clipping, internal sounds, live vs offline |
