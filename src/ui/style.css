@@ -133,6 +133,20 @@ button.big {
   box-shadow: var(--shadow);
 }
 
+/* PLAY / PAUSE / CONTINUE: an invisible copy of the longest label holds the
+   width so the rest of the top bar does not move when the label changes. */
+button.playbtn {
+  display: inline-grid;
+  justify-items: center;
+}
+
+button.playbtn::after {
+  content: 'CONTINUE';
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
 input,
 select,
 textarea {

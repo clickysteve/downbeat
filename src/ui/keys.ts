@@ -2,6 +2,13 @@
 import type { App } from '../app/app';
 
 export function installKeys(app: App, dialogsOpen: () => boolean): void {
+  // The element that last took focus from a mouse or touch press (Return on it
+  // drives the transport instead of pressing it again).
+  let pointerDown = false;
+  let pointerFocused: EventTarget | null = null;
+  document.addEventListener('pointerdown', () => (pointerDown = true), true);
+  document.addEventListener('pointerup', () => (pointerDown = false), true);
+  document.addEventListener('focusin', (e) => (pointerFocused = pointerDown ? e.target : null));
   document.addEventListener('keydown', (e) => {
     const t = e.target as HTMLElement | null;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
@@ -21,8 +28,19 @@ export function installKeys(app: App, dialogsOpen: () => boolean): void {
       case ' ':
         e.preventDefault();
         if (t?.tagName === 'BUTTON') t.blur();
+        if (app.transport === 'playing') app.stop();
+        else app.play();
+        break;
+      case 'Enter': {
+        // A button or row reached with the keyboard keeps Enter for itself;
+        // one that only has focus from a mouse click does not.
+        const clickable = t?.tagName === 'BUTTON' || t?.getAttribute('role') === 'button';
+        if (clickable && t !== pointerFocused) return;
+        e.preventDefault();
+        if (clickable) t.blur();
         app.togglePlay();
         break;
+      }
       case 'Escape':
         app.stop();
         break;

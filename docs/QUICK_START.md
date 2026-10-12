@@ -6,7 +6,7 @@ time round. You need a browser and speakers; MIDI equipment is optional.
 ## 1. Press PLAY (10 seconds)
 
 Open DOWNBEAT. The first time, it loads the **Basic Electro** demo. Press
-**PLAY** (or the space bar). You hear the built-in drum sounds.
+**PLAY** (or the space bar; Return plays and pauses). You hear the built-in drum sounds.
 
 Watch the grid while it plays:
 

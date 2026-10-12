@@ -314,7 +314,7 @@ export class Dialogs {
         ),
         ...sec('EXTENDED', 'New to DOWNBEAT: probability per voice and step, groove and swing, a Euclidean generator, evolution (from the original or from the previous variation), breeding, morphing, WHEN/THEN rules and an autopilot with one ACTIVITY control. Each can be switched off; CLASSIC switches them all off.'),
         ...sec('Variations', 'NEW VARIATION picks a new seed. REPLAY restarts with the same seed: the identical take. LOCK repeats the variation you hear. SOURCE plays only what you wrote. CAPTURE writes what you hear into a new pattern.'),
-        ...sec('Keys', 'Space play/pause · Esc stop · 1-5, 0 strikers · E eraser · F flam · P probability · [ ] shift voice · Cmd/Ctrl-Z undo · N new variation · R replay · S source · L lock · C capture · Up/Down select voice · H hear voice.'),
+        ...sec('Keys', 'Space play/stop · Return play/pause · Esc stop · 1-5, 0 strikers · E eraser · F flam · P probability · [ ] shift voice · Cmd/Ctrl-Z undo · N new variation · R replay · S source · L lock · C capture · Up/Down select voice · H hear voice.'),
         ...sec(
           'Samples',
           'SAMPLES opens the Sample Bank. Every drum sound (each sound step of each voice) plays its voice\'s INTERNAL sound or a SAMPLE: load a WAV with LOAD or drop it on a row, then set volume, pan, tune, mode and a choke group (AUTO: a HAT voice cuts ringing OPEN HAT voices, as always). SAMPLE TRANSFORMATION stretches, pitches, reverses, drives or crunches the sample once, before playback. Samples stay in this browser; FILE → DOWNLOAD BUNDLE carries a project with its samples.',

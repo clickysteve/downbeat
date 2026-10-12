@@ -21,7 +21,7 @@ export class TopBar {
   private midiChip = h('span', { class: 'chip', testid: 'midi-status' });
 
   constructor(private app: App, menus: { file: () => void; midi: () => void; palette: () => void; help: () => void; samples: () => void }) {
-    this.playBtn = button('PLAY', () => app.togglePlay(), { cls: 'big', help: 'Play / pause (space bar). Pause keeps the position; PLAY again continues.', testid: 'play' });
+    this.playBtn = button('PLAY', () => app.togglePlay(), { cls: 'big playbtn', help: 'Play / pause (Return). Pause keeps the position; CONTINUE carries on from there. The space bar plays and stops.', testid: 'play' });
     const stop = button('STOP', () => app.stop(), { cls: 'big', help: 'Stop and return to the start (Esc). All notes are released.', testid: 'stop' });
     const panic = button('PANIC', () => app.panic(), { cls: 'warn', help: 'All notes off on every MIDI channel', testid: 'panic' });
     const tempo = stepper(this.r, { label: 'BPM', min: 20, max: 300, get: () => Math.round(app.sched.external ? app.sched.pulses.bpm() ?? app.project.tempo : app.project.tempo), set: (b) => app.setTempo(b), help: 'Tempo in beats per minute (ignored while following external clock)', testid: 'tempo' });

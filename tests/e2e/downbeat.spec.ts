@@ -106,6 +106,42 @@ test('create a pattern: paint, erase, flam, undo', async ({ page }) => {
   await expect(page.getByTestId('cell-CL HAT-3')).toHaveAttribute('data-state', 'empty');
 });
 
+test('space plays and stops, Return plays and pauses, and the top bar does not move', async ({ page }) => {
+  await boot(page);
+  const body = page.locator('body');
+  const layout = () =>
+    page.evaluate(() =>
+      ['play', 'tempo', 'position', 'mode-classic', 'mode-extended', 'open-midi', 'open-file'].map((id) => {
+        const r = document.querySelector(`[data-testid="${id}"]`)!.getBoundingClientRect();
+        return [Math.round(r.left), Math.round(r.width)];
+      }),
+    );
+  const atRest = await layout();
+  await page.keyboard.press(' ');
+  await expect(body).toHaveAttribute('data-transport', 'playing');
+  expect(await layout()).toEqual(atRest);
+  await page.keyboard.press(' ');
+  await expect(body).toHaveAttribute('data-transport', 'stopped');
+  await page.keyboard.press('Enter');
+  await expect(body).toHaveAttribute('data-transport', 'playing');
+  await expect(page.getByTestId('play')).toHaveText('PAUSE');
+  expect(await layout()).toEqual(atRest);
+  await page.keyboard.press('Enter');
+  await expect(body).toHaveAttribute('data-transport', 'paused');
+  await expect(page.getByTestId('play')).toHaveText('CONTINUE');
+  expect(await layout()).toEqual(atRest);
+  await page.keyboard.press('Enter');
+  await expect(body).toHaveAttribute('data-transport', 'playing');
+  // A mouse click leaves focus on the button; Return still drives the transport.
+  await page.getByTestId('mode-classic').click();
+  await page.keyboard.press('Enter');
+  await expect(body).toHaveAttribute('data-transport', 'paused');
+  await page.keyboard.press(' ');
+  await expect(body).toHaveAttribute('data-transport', 'playing');
+  await page.keyboard.press(' ');
+  await expect(body).toHaveAttribute('data-transport', 'stopped');
+});
+
 test('play and stop: notes reach the MIDI output on time, stop leaves nothing hanging', async ({ page }) => {
   await boot(page);
   await freshProject(page);
