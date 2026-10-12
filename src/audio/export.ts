@@ -15,7 +15,8 @@
  * Outputs:
  *
  * - MASTER: the full chain as heard: voice processing, master processing, VOLUME and the
- *   master compressor.
+ *   master compressor. The compressor's look-ahead delay (6 ms in Chromium) is removed, so the
+ *   master lines up with the stems sample for sample.
  * - VOICE STEMS: one per sequencer voice, with that voice's processing ("bake" on) or dry.
  *   Never master processing, VOLUME or the compressor.
  * - DRUM-SOUND STEMS: one per drum sound (voice sound step) that plays, including sounds
@@ -34,9 +35,12 @@ import type { Timeline } from '@slopfactory/core/events';
 import { AUDITION_ID, renderCycles, type NoteItem } from '../engine/engine';
 import type { Pattern, Project } from '../engine/types';
 import type { SampleLibrary } from './library';
-import { FX_SEED, makeChoke, makeResolver, masterCompressor, MAX_PER_VOICE, voiceStrips } from './routing';
+import { compressorLatency, FX_SEED, makeChoke, makeResolver, masterCompressor, MAX_PER_VOICE, voiceStrips } from './routing';
 import { audioOf } from './settings';
 import { freezeItems, freezeTake, performanceTimeline, soundsUsed, type FrozenPerformance } from './timeline';
+
+/** Silence rendered (and dropped) before the music, so the master compressor starts settled. */
+export const EXPORT_PREROLL = 0.25;
 
 export type ExportRange = { kind: 'pattern'; patternId: string; cycles: number; written: boolean } | { kind: 'song' } | { kind: 'take' };
 export type ExportOutputs = 'master' | 'stems' | 'both';
@@ -181,6 +185,10 @@ export async function exportAudio(project: Project, library: SampleLibrary, opts
     maxPerVoice: MAX_PER_VOICE,
     fxModuleUrl: env.workletUrl ?? undefined,
     signal: env.signal,
+    // Live, the compressor has long been running when PLAY is pressed; a fresh one holds its
+    // first ~100 ms down. Every pass gets the same pre-roll, so every note has the same render
+    // time in each (the internal sounds' noise depends on it).
+    preRollSeconds: EXPORT_PREROLL,
   };
   const renders: RenderResult[] = [];
   const passes = (plan.master || plan.voiceStems.length ? 1 : 0) + (plan.soundStems.length ? 1 : 0);
@@ -197,6 +205,8 @@ export async function exportAudio(project: Project, library: SampleLibrary, opts
         masterFx: audioOf(snapshot).master,
         masterGain: env.volume,
         masterInsert: masterCompressor,
+        // the compressor looks ahead: the master is advanced by that delay to stay aligned with the stems
+        masterLatencyFrames: plan.master ? await compressorLatency(EXPORT_SAMPLE_RATE) : 0,
         onProgress: progress,
       }),
     );

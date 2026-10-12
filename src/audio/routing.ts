@@ -92,3 +92,35 @@ export function masterCompressor(ctx: BaseAudioContext, input: AudioNode): Audio
   input.connect(comp);
   return comp;
 }
+
+const latencies = new Map<number, Promise<number>>();
+
+/**
+ * How many frames the master compressor delays the signal at a sample rate (its look-ahead:
+ * 264 at 44.1 kHz in Chromium), measured once with a quiet click in an OfflineAudioContext,
+ * so exported masters can be advanced by exactly that much and stay aligned with the stems.
+ */
+export function compressorLatency(sampleRate: number): Promise<number> {
+  let p = latencies.get(sampleRate);
+  if (!p) {
+    p = (async () => {
+      try {
+        const ctx = new OfflineAudioContext(1, Math.round(sampleRate * 0.1), sampleRate);
+        const b = ctx.createBuffer(1, 32, sampleRate);
+        b.getChannelData(0)[0] = 0.01; // far below the threshold: passed through, only delayed
+        const src = ctx.createBufferSource();
+        src.buffer = b;
+        masterCompressor(ctx, src).connect(ctx.destination);
+        src.start(0);
+        const x = (await ctx.startRendering()).getChannelData(0);
+        let at = 0;
+        for (let i = 1; i < x.length; i++) if (Math.abs(x[i]!) > Math.abs(x[at]!)) at = i;
+        return at;
+      } catch {
+        return 0;
+      }
+    })();
+    latencies.set(sampleRate, p);
+  }
+  return p;
+}

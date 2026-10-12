@@ -1,8 +1,10 @@
 /** In-app dialogs (never browser alert / confirm). */
+const wide = new Set(['sample-bank', 'export-audio', 'output-fx']);
 import type { App } from '../app/app';
 import { MidiAccess } from '../midi/webmidi';
 import { DEMOS } from '../persistence/demos';
 import { button, clear, h, seg, select, toggle, type Refreshers } from './dom';
+import { exportAudioDialog, outputFx, sampleBank } from './audioDialogs';
 import { noteControl } from './notes';
 import { ROLES, ROLE_INFO, contrastWarnings, exportPalette, importPalette, PaletteError } from './palette';
 
@@ -30,13 +32,20 @@ export class Dialogs {
     this.unsub = null;
   }
 
-  private show(title: string, testid: string, body: (r: Refreshers) => (HTMLElement | null)[], topics: Parameters<App['on']>[0] = []): void {
+  /**
+   * Open a dialog. It is rebuilt when one of `topics` changes; with `structure`, only when that
+   * signature changes (otherwise its controls refresh in place, so a slider being dragged is
+   * never rebuilt underneath the pointer).
+   */
+  show(title: string, testid: string, body: (r: Refreshers) => (HTMLElement | null)[], topics: Parameters<App['on']>[0] = [], structure?: () => string): void {
     this.close();
     const r: Refreshers = [];
     const content = h('div', { class: 'panel-b' });
+    let sig = '';
     const build = () => {
       r.length = 0;
       clear(content);
+      sig = structure?.() ?? '';
       content.append(...body(r).filter((x): x is HTMLElement => !!x));
     };
     // Never rebuild under a field being typed in: wait until it loses focus.
@@ -46,6 +55,10 @@ export class Dialogs {
       return !!a && content.contains(a) && ((a.tagName === 'INPUT' && (a as HTMLInputElement).type === 'text') || a.tagName === 'SELECT');
     };
     const rebuild = () => {
+      if (structure && structure() === sig) {
+        for (const f of r) f();
+        return;
+      }
       if (editing()) pending = true;
       else build();
     };
@@ -61,7 +74,7 @@ export class Dialogs {
     build();
     const dlg = h(
       'div',
-      { class: 'dialog', role: 'dialog', 'aria-label': title, testid },
+      { class: `dialog${wide.has(testid) ? ' wide' : ''}`, role: 'dialog', 'aria-label': title, testid },
       h('div', { class: 'panel-t' }, h('span', { text: title }), h('span', { class: 'sp' }), h('button', { type: 'button', class: 'tiny', text: 'CLOSE', testid: 'dialog-close', on: { click: () => this.close() } })),
       content,
     );
@@ -69,6 +82,20 @@ export class Dialogs {
     document.body.append(this.scrim);
     if (topics.length) this.unsub = this.app.on(topics, rebuild);
     (dlg.querySelector('button, input, select') as HTMLElement | null)?.focus();
+  }
+
+  // ---------------------------------------------------------------- AUDIO
+
+  sampleBank(sound?: string): void {
+    sampleBank(this, this.app, sound);
+  }
+
+  outputFx(target?: string): void {
+    outputFx(this, this.app, target);
+  }
+
+  exportAudio(): void {
+    exportAudioDialog(this, this.app);
   }
 
   // ---------------------------------------------------------------- FILE
@@ -86,6 +113,12 @@ export class Dialogs {
           const f = fileIn.files?.[0];
           if (!f) return;
           if (app.importProjectText(await f.text())) this.close();
+        });
+        const bundleIn = h('input', { type: 'file', accept: '.downbeatpack,.zip,application/zip', testid: 'open-bundle', 'aria-label': 'open bundle' });
+        bundleIn.addEventListener('change', async () => {
+          const f = bundleIn.files?.[0];
+          if (!f) return;
+          if (await app.openBundle(new Uint8Array(await f.arrayBuffer()))) this.close();
         });
         const midiIn = h('input', { type: 'file', accept: '.mid,.midi,audio/midi', testid: 'import-midi', 'aria-label': 'import MIDI file' });
         midiIn.addEventListener('change', async () => {
@@ -108,7 +141,11 @@ export class Dialogs {
             ? h('div', { class: 'list', testid: 'library' }, ...lib.map((e) => h('div', { class: 'li' }, h('span', { class: 'nm', text: e.name }), h('span', { class: 'd', text: new Date(e.savedAt).toLocaleString() }), button('OPEN', () => (app.openFromLibrary(e.name), this.close()), { testid: `open-${e.name}` }), button('DELETE', () => (app.deleteFromLibrary(e.name), this.file()), { cls: 'tiny' }))))
             : h('p', { class: 'hint', text: app.store.available ? 'Nothing saved yet.' : 'This browser is not letting DOWNBEAT store anything: use EXPORT.' }),
           h('h3', { text: 'PROJECT FILES' }),
-          h('div', { class: 'btnrow' }, button('EXPORT PROJECT', () => app.exportProject(), { help: 'Download the project as a .downbeat.json file', testid: 'export-project' }), h('label', { class: 'ctl' }, h('span', { class: 'lab', text: 'IMPORT' }), fileIn)),
+          h('div', { class: 'btnrow' }, button('EXPORT PROJECT', () => app.exportProject(), { help: 'Download the project as a .downbeat.json file (samples are referenced, not included)', testid: 'export-project' }), h('label', { class: 'ctl' }, h('span', { class: 'lab', text: 'IMPORT' }), fileIn)),
+          h('h3', { text: 'PORTABLE BUNDLES (PROJECT + SAMPLES)' }),
+          h('div', { class: 'btnrow' }, button('DOWNLOAD BUNDLE', () => void app.downloadBundle(), { help: 'Download a .downbeatpack: the project and every sample it uses, to open in another browser', testid: 'download-bundle' }), h('label', { class: 'ctl' }, h('span', { class: 'lab', text: 'OPEN' }), bundleIn)),
+          h('h3', { text: 'AUDIO FILES' }),
+          h('div', { class: 'btnrow' }, button('EXPORT AUDIO…', () => this.exportAudio(), { help: 'Render WAV: master, voice stems, drum-sound stems', testid: 'file-export-audio' })),
           h('h3', { text: 'MIDI FILES' }),
           h('div', { class: 'btnrow' }, cycles, fmt),
           h(
@@ -278,6 +315,15 @@ export class Dialogs {
         ...sec('EXTENDED', 'New to DOWNBEAT: probability per voice and step, groove and swing, a Euclidean generator, evolution (from the original or from the previous variation), breeding, morphing, WHEN/THEN rules and an autopilot with one ACTIVITY control. Each can be switched off; CLASSIC switches them all off.'),
         ...sec('Variations', 'NEW VARIATION picks a new seed. REPLAY restarts with the same seed: the identical take. LOCK repeats the variation you hear. SOURCE plays only what you wrote. CAPTURE writes what you hear into a new pattern.'),
         ...sec('Keys', 'Space play/pause · Esc stop · 1-5, 0 strikers · E eraser · F flam · P probability · [ ] shift voice · Cmd/Ctrl-Z undo · N new variation · R replay · S source · L lock · C capture · Up/Down select voice · H hear voice.'),
+        ...sec(
+          'Samples',
+          'SAMPLES opens the Sample Bank. Every drum sound (each sound step of each voice) plays its voice\'s INTERNAL sound or a SAMPLE: load a WAV with LOAD or drop it on a row, then set volume, pan, tune, mode and a choke group (AUTO: a HAT voice cuts ringing OPEN HAT voices, as always). SAMPLE TRANSFORMATION stretches, pitches, reverses, drives or crunches the sample once, before playback. Samples stay in this browser; FILE → DOWNLOAD BUNDLE carries a project with its samples.',
+        ),
+        ...sec('Processing', 'FX opens Output Processing: Good Bits output stages, drive, crunch, tone and gain, per voice and on the master, live and in exports. The chain is sound → voice → master → VOLUME → master compressor. CLEAN everywhere sounds as DOWNBEAT always did.'),
+        ...sec(
+          'Export audio',
+          'EXPORT AUDIO renders a pattern, the song or a recorded take to WAV (44.1 kHz, 16-bit): the master, stems per SEQUENCER VOICE, stems per DRUM SOUND, or both, as one ZIP. Stems are sample-aligned and the same length. The master includes processing, VOLUME and the compressor; stems never include master processing; drum-sound stems leave out voice processing, which cannot be split exactly by sound. External MIDI instruments are not rendered.',
+        ),
         ...sec('MIDI and sync', 'MIDI sends each voice on its own channel and notes. CLK OUT sends 24 PPQN clock with Start/Stop/Continue. In the MIDI dialog choose EXTERNAL to follow another instrument\'s clock. Internal sounds work without any equipment.'),
         ...sec(
           'About',

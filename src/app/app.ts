@@ -118,6 +118,7 @@ export class App {
   private now: () => number;
   private downloadFn: (name: string, data: Blob | string, type: string) => void;
   private workletUrl: string | null;
+  private lastEdit: { key: string; at: number } | null = null;
   private lastHeardCycle = -1;
   private preview: { key: string; plan: CyclePlan | null } | null = null;
 
@@ -339,10 +340,17 @@ export class App {
     return JSON.stringify(this.project);
   }
 
-  /** Make an undoable edit. */
-  edit(fn: () => void, topics: Topic[] = ['pattern']): void {
-    this.undoStack.push(this.snapshot());
-    if (this.undoStack.length > UNDO_LIMIT) this.undoStack.shift();
+  /**
+   * Make an undoable edit. Edits with the same `coalesce` key in quick succession (a slider
+   * being dragged) make one undo step.
+   */
+  edit(fn: () => void, topics: Topic[] = ['pattern'], coalesce?: string): void {
+    const now = Date.now();
+    if (!coalesce || this.lastEdit?.key !== coalesce || now - this.lastEdit.at > 1500) {
+      this.undoStack.push(this.snapshot());
+      if (this.undoStack.length > UNDO_LIMIT) this.undoStack.shift();
+    }
+    this.lastEdit = coalesce ? { key: coalesce, at: now } : null;
     this.redoStack = [];
     fn();
     this.touch(topics);
@@ -1381,14 +1389,18 @@ export class App {
   }
 
   /** Change a drum sound's settings (undoable). */
-  setSound(key: string, fn: (s: SoundSlot) => void): void {
+  setSound(key: string, fn: (s: SoundSlot) => void, coalesce?: string): void {
     const k = parseSoundKey(key);
     const v = k && this.project.voices.find((x) => x.id === k.voice);
     if (!k || !v || k.step >= v.notes.length) return;
-    this.edit(() => {
-      const slot = ensureAudio(this.project).sounds[k.voice]?.[k.step];
-      if (slot) fn(slot);
-    }, ['audio']);
+    this.edit(
+      () => {
+        const slot = ensureAudio(this.project).sounds[k.voice]?.[k.step];
+        if (slot) fn(slot);
+      },
+      ['audio'],
+      coalesce && `${key}:${coalesce}`,
+    );
     this.audioChanged();
   }
 
@@ -1397,11 +1409,11 @@ export class App {
   }
 
   setSoundZone(key: string, patch: Partial<SampleZone>): void {
-    this.setSound(key, (s) => (s.zone = { ...s.zone, ...patch }));
+    this.setSound(key, (s) => (s.zone = { ...s.zone, ...patch }), `zone:${Object.keys(patch).join(',')}`);
   }
 
   setSoundTransform(key: string, patch: Partial<SampleTransform>): void {
-    this.setSound(key, (s) => (s.transform = { ...s.transform, ...patch }));
+    this.setSound(key, (s) => (s.transform = { ...s.transform, ...patch }), `transform:${Object.keys(patch).join(',')}`);
   }
 
   setSoundChoke(key: string, patch: Partial<SoundChoke>): void {
@@ -1444,15 +1456,15 @@ export class App {
   }
 
   /** Output processing of a sequencer voice (undoable). */
-  setVoiceFx(voiceId: string, fx: OutputFxSettings): void {
+  setVoiceFx(voiceId: string, fx: OutputFxSettings, coalesce?: string): void {
     if (!this.project.voices.some((v) => v.id === voiceId)) return;
-    this.edit(() => (ensureAudio(this.project).voiceFx[voiceId] = structuredClone(fx)), ['audio']);
+    this.edit(() => (ensureAudio(this.project).voiceFx[voiceId] = structuredClone(fx)), ['audio'], coalesce && `fx:${voiceId}:${coalesce}`);
     this.audioChanged();
   }
 
   /** Master output processing (undoable). */
-  setMasterFx(fx: OutputFxSettings): void {
-    this.edit(() => (ensureAudio(this.project).master = structuredClone(fx)), ['audio']);
+  setMasterFx(fx: OutputFxSettings, coalesce?: string): void {
+    this.edit(() => (ensureAudio(this.project).master = structuredClone(fx)), ['audio'], coalesce && `fx:master:${coalesce}`);
     this.audioChanged();
   }
 

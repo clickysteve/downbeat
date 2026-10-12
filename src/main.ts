@@ -14,7 +14,7 @@ import { TopBar } from './ui/topbar';
 const app = new App();
 app.applyPalette();
 const dialogs = new Dialogs(app);
-const top = new TopBar(app, { file: () => dialogs.file(), midi: () => dialogs.midi(), palette: () => dialogs.palette(), help: () => dialogs.help() });
+const top = new TopBar(app, { file: () => dialogs.file(), midi: () => dialogs.midi(), palette: () => dialogs.palette(), help: () => dialogs.help(), samples: () => dialogs.sampleBank() });
 const side = new SideView(app);
 const tools = new ToolsView(app);
 const grid = new GridView(app);
@@ -81,4 +81,5 @@ const loop = () => {
 requestAnimationFrame(loop);
 
 // For debugging and browser tests.
-(window as unknown as { __downbeat: App }).__downbeat = app;
+(window as unknown as { __downbeat: App; __dialogs: Dialogs }).__downbeat = app;
+(window as unknown as { __dialogs: Dialogs }).__dialogs = dialogs;

@@ -42,6 +42,11 @@ export class LiveAudio {
     private workletUrl: string | null,
   ) {}
 
+  /** The last node before the speakers (the master compressor), for recording in tests. */
+  get output(): AudioNode | null {
+    return this.master;
+  }
+
   get ready(): boolean {
     return !!this.ctx && this.ctx.state === 'running';
   }
