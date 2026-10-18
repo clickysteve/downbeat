@@ -1619,3 +1619,15 @@ input[type='range']:disabled {
 .audio-tabs {
   align-self: flex-start;
 }
+
+/* four audio windows: on a narrow screen the tab row wraps instead of widening the dialog */
+@media (max-width: 760px) {
+  .audio-tabs {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+  .audio-tabs button + button {
+    border-left: 1px solid var(--ink);
+    margin-left: -1px;
+  }
+}

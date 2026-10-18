@@ -7,13 +7,16 @@
  * Signal chain:
  *   drum sound (internal synthesis, or sample + sample transformation + zone)
  *     -> sequencer voice strip (voice output processing)
- *     -> master bus -> master output processing -> VOLUME -> master compressor -> speakers
+ *     -> master bus -> master output processing -> OUTPUT CHAIN -> VOLUME -> master compressor
+ *     -> speakers
  *
- * With every processor CLEAN this is the chain DOWNBEAT always had (hits -> VOLUME ->
- * compressor), so the internal sounds are unchanged.
+ * With every processor CLEAN and the chain empty this is the chain DOWNBEAT always had (hits ->
+ * VOLUME -> compressor), so the internal sounds are unchanged.
  */
 import { Mixer, NotePlayer } from '@slopfactory/core/audio';
 import { loadOutputFx } from '@slopfactory/core/dsp';
+import { loadOutputChain } from '@slopfactory/core/engines';
+import { chainOf } from './output';
 import type { NoteItem } from '../engine/engine';
 import type { Project } from '../engine/types';
 import type { SampleLibrary } from './library';
@@ -32,6 +35,8 @@ export class LiveAudio {
   private player: NotePlayer | null = null;
   private master: AudioNode | null = null;
   private fxAvailable = false;
+  /** the OUTPUT CHAIN is running (false without AudioWorklet) */
+  chainProcessing = false;
   private voiceKey = '';
   private seq = 0;
   private starting: Promise<boolean> | null = null;
@@ -40,6 +45,7 @@ export class LiveAudio {
     private getProject: () => Project,
     private library: SampleLibrary,
     private workletUrl: string | null,
+    private chainUrl: string | null = null,
   ) {}
 
   /** The last node before the speakers (the master compressor), for recording in tests. */
@@ -79,6 +85,7 @@ export class LiveAudio {
       }
       this.fxAvailable = this.workletUrl ? await loadOutputFx(ctx, this.workletUrl) : false;
       this.processing = this.fxAvailable;
+      this.chainProcessing = this.chainUrl ? await loadOutputChain(ctx, this.chainUrl) : false;
       this.ctx = ctx;
       this.build();
       return true;
@@ -94,7 +101,7 @@ export class LiveAudio {
     this.player?.stopAll(ctx.currentTime);
     this.mixer?.dispose();
     const a = audioOf(p);
-    this.mixer = new Mixer(ctx, { voices: p.voices.map((v) => v.id), strips: voiceStrips(p), masterFx: a.master, masterGain: this.volume, fxAvailable: this.fxAvailable, seed: FX_SEED });
+    this.mixer = new Mixer(ctx, { voices: p.voices.map((v) => v.id), strips: voiceStrips(p), masterFx: a.master, masterGain: this.volume, fxAvailable: this.fxAvailable, seed: FX_SEED, masterChain: chainOf(a), chainAvailable: this.chainProcessing });
     if (!this.master) {
       this.master = masterCompressor(ctx, this.mixer.output);
       this.master.connect(ctx.destination);
@@ -113,6 +120,7 @@ export class LiveAudio {
     }
     for (const [id, s] of Object.entries(voiceStrips(p))) this.mixer.setStrip(id, s);
     this.mixer.setMasterFx(audioOf(p).master);
+    this.mixer.setMasterChain(chainOf(audioOf(p)));
   }
 
   setVolume(v: number): void {

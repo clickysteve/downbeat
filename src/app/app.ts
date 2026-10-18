@@ -5,6 +5,7 @@
  */
 import { cleanFx, WorkerTransformRunner, type AudioData, type OutputFxSettings, type SampleTransform, type TransformRunner } from '@slopfactory/core/dsp';
 import { RenderCancelled } from '@slopfactory/core/render';
+import type { ChainConfig } from '@slopfactory/core/engines';
 import type { DecodedSample, SampleZone } from '@slopfactory/core/sampler';
 import { IndexedDbSampleStore, type SampleStore } from '@slopfactory/core/storage';
 import { makeBundle, unpackBundle } from '../audio/bundle';
@@ -12,7 +13,7 @@ import { exportAudio, type AudioExportOptions, type ExportResult } from '../audi
 import { SampleLibrary } from '../audio/library';
 import { LiveAudio } from '../audio/live';
 import { audioOf, ensureAudio, parseSoundKey, referencedSamples, slotOf, syncAudioShape, type SoundChoke, type SoundSlot, type SoundSource } from '../audio/settings';
-import { OUTPUT_FX_WORKLET_URL, TRANSFORM_WORKER_URL } from '../audio/urls';
+import { CHAIN_WORKLET_URL, OUTPUT_FX_WORKLET_URL, TRANSFORM_WORKER_URL } from '../audio/urls';
 import { EXTRA_VOICES, KIT, makeId, makePattern, makeVoice, newProject, syncTracks } from '../engine/defaults';
 import { AUDITION_ID, Engine, renderCycles, type NoteItem } from '../engine/engine';
 import { clonePattern, doubleLength, pasteStrikes, regrid, reverse, rotate } from '../engine/patternOps';
@@ -71,6 +72,8 @@ export interface AppDeps {
   transformRunner?: TransformRunner;
   /** Core's output-processing AudioWorklet (null: no processing) */
   workletUrl?: string | null;
+  /** Core's output-chain AudioWorklet (null: the OUTPUT CHAIN does not run) */
+  chainWorkletUrl?: string | null;
   /** Download hook (tests capture files here). */
   download?: (name: string, data: Blob | string, type: string) => void;
 }
@@ -118,6 +121,7 @@ export class App {
   private now: () => number;
   private downloadFn: (name: string, data: Blob | string, type: string) => void;
   private workletUrl: string | null;
+  private chainWorkletUrl: string | null;
   private lastEdit: { key: string; at: number } | null = null;
   private lastHeardCycle = -1;
   private preview: { key: string; plan: CyclePlan | null } | null = null;
@@ -139,7 +143,8 @@ export class App {
     this.library = new SampleLibrary({ store, runner, decode: deps.decode, makeBuffer: deps.makeBuffer });
     this.library.onChange = () => this.emit(['audio']);
     this.workletUrl = deps.workletUrl !== undefined ? deps.workletUrl : OUTPUT_FX_WORKLET_URL;
-    this.audio = new LiveAudio(() => this.project, this.library, this.workletUrl);
+    this.chainWorkletUrl = deps.chainWorkletUrl !== undefined ? deps.chainWorkletUrl : CHAIN_WORKLET_URL;
+    this.audio = new LiveAudio(() => this.project, this.library, this.workletUrl, this.chainWorkletUrl);
     this.audio.volume = this.prefs.volume;
     if (this.project.audio) this.library.sync(this.project.audio);
     this.downloadFn = deps.download ?? browserDownload;
@@ -1468,6 +1473,12 @@ export class App {
     this.audioChanged();
   }
 
+  /** The OUTPUT CHAIN (undoable, like the master processing). */
+  setOutputChain(chain: ChainConfig, coalesce?: string): void {
+    this.edit(() => (ensureAudio(this.project).chain = structuredClone(chain)), ['audio'], coalesce && `chain:${coalesce}`);
+    this.audioChanged();
+  }
+
   /** Every voice and the master back to CLEAN. */
   clearProcessing(): void {
     if (!this.project.audio) return;
@@ -1511,10 +1522,10 @@ export class App {
     try {
       const state = { lockKey: this.engine.lockKey, sourceOnly: this.engine.sourceOnly, audition: this.engine.audition };
       const take = this.take.notes.length ? { notes: this.take.notes, ms: this.take.ms, startTick: this.take.startTick, tempo: this.take.tempo } : null;
-      const r = await exportAudio(this.project, this.library, opts, state, take, { workletUrl: this.workletUrl, volume: this.prefs.volume, onProgress, signal: ac.signal });
+      const r = await exportAudio(this.project, this.library, opts, state, take, { workletUrl: this.workletUrl, chainUrl: this.chainWorkletUrl, volume: this.prefs.volume, onProgress, signal: ac.signal });
       this.downloadFn(r.download.name, new Blob([r.download.bytes as BlobPart], { type: r.download.type }), r.download.type);
       const clipped = r.files.filter((f) => f.stats.clipped > 0);
-      const unprocessed = r.renders.some((x) => !x.processed) && this.usesProcessing();
+      const unprocessed = (r.renders.some((x) => !x.processed) && this.usesProcessing()) || r.renders.some((x) => !x.chainProcessed);
       this.setStatus(
         `Exported ${r.download.name}: ${r.files.length} WAV file${r.files.length > 1 ? 's' : ''}, ${r.renders[0]!.seconds.toFixed(1)} s.` +
           (clipped.length ? ` ${clipped.length} file${clipped.length > 1 ? 's' : ''} clipped (not normalised): ${clipped.map((f) => f.name).join(', ')}.` : '') +

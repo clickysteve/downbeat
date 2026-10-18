@@ -303,6 +303,51 @@ test('processing: voice processing in voice stems only; master processing in the
   expect(maxDiff(find(dry, 'voice-02').channels[0]!, sCrunch)).toBeLessThanOrEqual(LSB);
 });
 
+test('output chain: master only, after master processing; its DRIVE is the master processing DRIVE', async ({ page }) => {
+  await boot(page);
+  await sample(page, 'SNARE', 0, 'tone.wav', melodicWav());
+  await strikes(page, 'SNARE', [0], { v: 5 });
+  const clean = await exportFiles(page, { tailSeconds: 0.5 });
+  // the same engine in two places: master processing DRIVE, or a chain stage DRIVE
+  await page.evaluate(() => {
+    const a = (window as any).__downbeat;
+    const m = structuredClone(a.project.audio.master);
+    m.drive = { enabled: true, type: 'fuzz', amountPct: 80 };
+    a.setMasterFx(m);
+  });
+  const viaFx = await exportFiles(page, { tailSeconds: 0.5 });
+  await page.evaluate(() => {
+    const a = (window as any).__downbeat;
+    const m = structuredClone(a.project.audio.master);
+    m.drive = { ...m.drive, enabled: false };
+    a.setMasterFx(m);
+    a.setOutputChain({ version: 1, bypass: false, stages: [{ id: 's1', engine: 'goodbits.drive', enabled: true, params: { type: 'fuzz', amountPct: 80 } }] });
+  });
+  const viaChain = await exportFiles(page, { tailSeconds: 0.5 });
+  // a 2-bit crunch makes the chain unmistakable; bypassed, the master is clean again
+  await page.evaluate(() => (window as any).__downbeat.setOutputChain({ version: 1, bypass: false, stages: [{ id: 's1', engine: 'goodbits.crunch', enabled: true, params: { bits: 2, rateDivide: 1 } }] }));
+  const crushed = await exportFiles(page, { tailSeconds: 0.5 });
+  await page.evaluate(() => (window as any).__downbeat.setOutputChain({ version: 1, bypass: true, stages: [{ id: 's1', engine: 'goodbits.crunch', enabled: true, params: { bits: 2, rateDivide: 1 } }] }));
+  const bypassed = await exportFiles(page, { tailSeconds: 0.5 });
+  const master = (f: Files) => find(f, '_master').channels[0]!;
+  const levels = (x: Float32Array) => new Set(Array.from(x.subarray(0, 20000), (v) => Math.round(v * 32767))).size;
+  report.outputChain = {
+    chainDriveMinusMasterFxDrive: maxDiff(master(viaChain), master(viaFx)),
+    masterChangedByChain: maxDiff(master(viaChain), master(clean)),
+    voiceStemChangedByChain: maxDiff(find(viaChain, 'voice-02').channels[0]!, find(clean, 'voice-02').channels[0]!),
+    soundStemChangedByChain: maxDiff(find(crushed, 'sound-snare-1').channels[0]!, find(clean, 'sound-snare-1').channels[0]!),
+    masterLevelsWithCrunch2: levels(master(crushed)),
+    bypassedMinusClean: maxDiff(master(bypassed), master(clean)),
+  };
+  expect(maxDiff(master(viaChain), master(viaFx))).toBeLessThanOrEqual(LSB);
+  expect(maxDiff(master(viaChain), master(clean))).toBeGreaterThan(0.01);
+  expect(maxDiff(find(viaChain, 'voice-02').channels[0]!, find(clean, 'voice-02').channels[0]!)).toBe(0);
+  expect(maxDiff(find(crushed, 'sound-snare-1').channels[0]!, find(clean, 'sound-snare-1').channels[0]!)).toBe(0);
+  // 2-bit crunch before VOLUME and the compressor: only a handful of levels
+  expect(levels(master(crushed))).toBeLessThan(levels(master(clean)) / 10);
+  expect(maxDiff(master(bypassed), master(clean))).toBeLessThanOrEqual(LSB);
+});
+
 test('voice and drum-sound stems: fills borrowing a sound, several sounds on one voice, flams, shifts', async ({ page }) => {
   await boot(page);
   await sample(page, 'KICK', 0, 'kick.wav', kickWav());

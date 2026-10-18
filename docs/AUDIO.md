@@ -74,13 +74,37 @@ The signal chain:
 ```
 drum sound: internal synthesis, or sample (+ sample transformation, volume, pan, tuning)
   -> sequencer voice processing
-  -> master bus -> master processing -> VOLUME -> master compressor -> speakers
+  -> master bus -> master processing -> OUTPUT CHAIN -> VOLUME -> master compressor -> speakers
 ```
 
 The master compressor is DOWNBEAT's own (threshold -10 dB, ratio 4, 3 ms attack, 120 ms
 release), unchanged and always on. With every processor CLEAN the chain is exactly the one
 DOWNBEAT always had. Processing needs AudioWorklet (https or localhost); without it audio plays
 unprocessed and the window says so.
+
+## OUTPUT CHAIN (AUDIO → OUTPUT CHAIN)
+
+A serial chain of **output engines** from Slop Factory Core on the master, after master
+processing and before VOLUME and the compressor. The engines are the same code The Good Bits
+uses for its exports and The Breakery and emmm use live: OUTPUT STAGE (ten characters), DRIVE,
+CRUNCH and TONE, with the same parameter meanings everywhere. Unlike PROCESSING (one fixed
+processor per voice and master), the chain is open-ended: **ADD** an engine (up to eight),
+select a row to edit it, **ON** to bypass one stage, ▲ ▼ to reorder, **ENGINE** to swap it,
+**DEFAULTS**, **REMOVE**, **BYPASS ALL** and **PRESET** (CLEAN, 12-BIT, BITCRUSH, ...). The
+controls come from the engines' own parameter descriptions, so new Core engines appear here
+with no change to DOWNBEAT.
+
+- Changes are heard at once without clicks (ramps and crossfades in the worklet), are part of
+  the project (saved, undoable like PROCESSING) and render into EXPORT AUDIO's master exactly
+  where they play live. **Stems are never processed by the chain** (voice or drum-sound,
+  baked or dry), and it never reaches MIDI.
+- A project without a chain (every project made before it) has an empty one and sounds exactly
+  as before. A stage saved by another application with an engine DOWNBEAT does not have is kept
+  and passes audio through.
+- Core has no MIDI engines yet, so DOWNBEAT's MIDI output goes through no chain.
+- `tests/e2e/audio-verify.spec.ts` checks that a chain DRIVE renders the same master as the
+  PROCESSING DRIVE with the same settings (within one 16-bit step), that stems are untouched and
+  that BYPASS ALL gives the clean master back.
 
 ## EXPORT AUDIO (AUDIO → EXPORT AUDIO, or FILE)
 

@@ -189,6 +189,46 @@ test('output processing window: targets, presets, bypass, overview, all clean', 
   await expect(page.getByTestId('fx-row-VOICE SNARE')).toContainText('CLEAN');
 });
 
+test('output chain window: add, configure, reorder, bypass, preset, remove; saved with the project', async ({ page }) => {
+  await boot(page);
+  await page.getByTestId('open-audio').click();
+  await page.getByTestId('audio-tab-chain').click();
+  await expect(page.getByTestId('output-chain')).toBeVisible();
+  await expect(page.getByTestId('chain-empty')).toBeVisible();
+  // engines come from Core's registry; controls from their parameter descriptions
+  await page.getByTestId('chain-add').selectOption('goodbits.output-stage');
+  await expect(page.getByTestId('chain-p-mode')).toBeVisible();
+  await page.getByTestId('chain-p-mode').selectOption('vinyl');
+  await page.getByTestId('chain-add').selectOption('goodbits.crunch');
+  await expect(page.getByTestId('chain-p-bits')).toBeVisible();
+  await page.getByTestId('chain-p-bits').fill('4');
+  await expect(page.getByTestId('chain-row-2')).toContainText('4 BIT');
+  await page.getByTestId('chain-up').click();
+  await expect(page.getByTestId('chain-row-1')).toContainText('CRUNCH');
+  await page.getByTestId('chain-on').click();
+  await expect(page.getByTestId('chain-row-1')).toContainText('OFF');
+  await page.getByTestId('chain-bypass').click();
+  const saved = await page.evaluate(() => (window as any).__downbeat.project.audio.chain);
+  expect(saved.bypass).toBe(true);
+  expect(saved.stages.map((s: any) => [s.engine, s.enabled])).toEqual([['goodbits.crunch', false], ['goodbits.output-stage', true]]);
+  expect(saved.stages[1].params.mode).toBe('vinyl');
+  // undo is the project's undo, like the master processing
+  await page.evaluate(() => (window as any).__downbeat.undo());
+  expect(await page.evaluate(() => (window as any).__downbeat.project.audio.chain.bypass)).toBe(false);
+  // survives a reload
+  await page.reload();
+  await expect(page.getByTestId('grid')).toBeVisible();
+  const restored = await page.evaluate(() => (window as any).__downbeat.project.audio.chain.stages.map((s: any) => s.engine));
+  expect(restored).toEqual(['goodbits.crunch', 'goodbits.output-stage']);
+  await page.getByTestId('open-audio').click();
+  await page.getByTestId('audio-tab-chain').click();
+  await page.getByTestId('chain-preset').selectOption('12bit');
+  await expect(page.getByTestId('chain-row-3')).toContainText('TONE');
+  await page.getByTestId('chain-remove').click();
+  await expect(page.getByTestId('chain-row-3')).toHaveCount(0);
+  await expect(page.getByTestId('chain-unavailable')).toHaveCount(0);
+});
+
 test('export audio window: a master WAV, then master + both kinds of stems as one ZIP', async ({ page }) => {
   await boot(page);
   await app(page, 'openDemo', 'jungle');
@@ -316,7 +356,7 @@ test('keyboard and small screens: the windows close with Esc, shortcuts still wo
   await page.keyboard.press('Escape');
   await expect.poll(() => page.evaluate(() => (window as any).__downbeat.transport)).toBe('stopped');
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const tab of ['bank', 'fx', 'export']) {
+  for (const tab of ['bank', 'fx', 'chain', 'export']) {
     await page.getByTestId('open-audio').click();
     if (tab !== 'bank') await page.getByTestId(`audio-tab-${tab}`).click();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

@@ -95,7 +95,8 @@ open hat is already set up as **AUTO**). **TRANSFORM** stretches, pitches, rever
 the sample itself.
 
 **PROCESSING** adds Good Bits character to a voice or the master: try the **BITCRUSH** preset on
-the master, or **CASSETTE**.
+the master, or **CASSETTE**. **OUTPUT CHAIN** stacks several engines on the master in any order:
+**ADD** OUTPUT STAGE, then DRIVE, and move them around while it plays.
 
 **EXPORT AUDIO** renders what DOWNBEAT plays to WAV: a pattern for some cycles, the song, or a
 take you recorded with **REC TAKE**. Choose **MASTER + STEMS** and **STEMS BY: SEQUENCER VOICE**,
