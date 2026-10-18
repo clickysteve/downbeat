@@ -1,12 +1,15 @@
 /**
- * The SAMPLE BANK, OUTPUT PROCESSING and EXPORT AUDIO windows (in DOWNBEAT's dialog style).
- * All audio work is done by Slop Factory Core through the App; these only edit settings.
+ * The SAMPLE BANK, OUTPUT PROCESSING, OUTPUT CHAIN and EXPORT AUDIO windows (in DOWNBEAT's
+ * dialog style). All audio work is done by Slop Factory Core through the App; these only edit
+ * settings. The OUTPUT CHAIN's controls are built from the engines' parameter descriptions.
  */
 import { DRIVE_SHAPES, FX_PRESETS, fxLabel, matchPreset, OUTPUT_STAGE_MODES, stretchCharacters, type OutputFxSettings } from '@slopfactory/core/dsp';
+import { formatParam, matchChainPreset, OutputChain, presetsFor, type ParamDef } from '@slopfactory/core/engines';
 import { MAX_RENDER_SECONDS } from '@slopfactory/core/render';
 import { waveformPeaks } from '@slopfactory/core/sampler';
 import type { App } from '../app/app';
 import { defaultExportOptions, planExport, type AudioExportOptions, type ExportResult } from '../audio/export';
+import { chainOf, OUTPUT_ENGINES } from '../audio/output';
 import { audioOf, CHOKE_GROUPS, chokeFor, chokeLabel, drumSounds, type DrumSound } from '../audio/settings';
 import { AUDITION_ID } from '../engine/engine';
 import { noteName } from '../midi/messages';
@@ -15,14 +18,15 @@ import { button, h, seg, select, slider, stepper, toggle } from './dom';
 
 const SAMPLE_ACCEPT = '.wav,.wave,.aif,.aiff,.aifc,.mp3,.ogg,.flac,.m4a,audio/*';
 
-/** The row that switches between the three audio windows. */
-function audioTabs(d: Dialogs, app: App, current: 'bank' | 'fx' | 'export'): HTMLElement {
-  const tab = (id: 'bank' | 'fx' | 'export', label: string, open: () => void, help: string) => h('button', { type: 'button', class: id === current ? 'on' : '', text: label, help, testid: `audio-tab-${id}`, 'aria-pressed': String(id === current), on: { click: () => id !== current && open() } });
+/** The row that switches between the audio windows. */
+function audioTabs(d: Dialogs, app: App, current: 'bank' | 'fx' | 'chain' | 'export'): HTMLElement {
+  const tab = (id: 'bank' | 'fx' | 'chain' | 'export', label: string, open: () => void, help: string) => h('button', { type: 'button', class: id === current ? 'on' : '', text: label, help, testid: `audio-tab-${id}`, 'aria-pressed': String(id === current), on: { click: () => id !== current && open() } });
   return h(
     'div',
     { class: 'seg audio-tabs', role: 'group' },
     tab('bank', 'SAMPLE BANK', () => sampleBank(d, app), 'Samples for the drum sounds, choke groups, sample transformations'),
     tab('fx', 'PROCESSING', () => outputFx(d, app), 'Output processing per voice and on the master'),
+    tab('chain', 'OUTPUT CHAIN', () => outputChain(d, app), 'A chain of output engines on the master, before VOLUME'),
     tab('export', 'EXPORT AUDIO', () => exportAudioDialog(d, app), 'Render WAV: master, voice stems, drum-sound stems'),
   );
 }
@@ -261,7 +265,7 @@ export function outputFx(d: Dialogs, app: App, target?: string): void {
       const unavailable = app.audio.ctx && !app.audio.processing;
       return [
         audioTabs(d, app, 'fx'),
-        h('p', { class: 'hint', text: 'Signal chain: drum sound (internal sound, or sample with its transformation) → VOICE processing → MASTER processing → VOLUME → master compressor (DOWNBEAT\'s own, always on). Everything CLEAN sounds exactly as DOWNBEAT always did. Live playback and EXPORT AUDIO run the same processing.' }),
+        h('p', { class: 'hint', text: 'Signal chain: drum sound (internal sound, or sample with its transformation) → VOICE processing → MASTER processing → OUTPUT CHAIN → VOLUME → master compressor (DOWNBEAT\'s own, always on). Everything CLEAN sounds exactly as DOWNBEAT always did. Live playback and EXPORT AUDIO run the same processing.' }),
         overview,
         select(r, { label: 'EDIT', options: targets, get: () => (isMaster() ? 'master' : fxState.target), set: (v) => outputFx(d, app, v), testid: 'fx-target' }),
         unavailable ? h('p', { class: 'hint warn-text', testid: 'fx-unavailable', text: 'This browser cannot run the processors (AudioWorklet needs https or localhost): audio plays unprocessed.' }) : null,
@@ -305,6 +309,141 @@ export function outputFx(d: Dialogs, app: App, target?: string): void {
     },
     ['audio', 'voices'],
     () => JSON.stringify([isMaster() ? 'master' : fxState.target, app.project.voices.map((v) => [v.id, v.name]), !!app.audio.ctx && !app.audio.processing]),
+  );
+}
+
+// ---------------------------------------------------------------- OUTPUT CHAIN
+
+const chainState = { sel: '' };
+
+/** One parameter's control, from its description. */
+function paramCtl(r: Parameters<typeof slider>[0], def: ParamDef, get: () => number | boolean | string, set: (v: number | boolean | string, coalesce?: string) => void, testid: string): HTMLElement {
+  const label = def.label.toUpperCase();
+  const help = def.description;
+  if (def.type === 'continuous' || def.type === 'integer') {
+    const fmt = (v: number) => formatParam(def, v).toUpperCase();
+    if (def.type === 'continuous' && def.scale === 'log' && def.min > 0) {
+      // a log control over 0..1000 steps, rounded to the parameter's step
+      const k = Math.log(def.max / def.min);
+      const toV = (x: number) => {
+        const v = def.min * Math.exp((x / 1000) * k);
+        const st = def.step ?? 0;
+        return Math.max(def.min, Math.min(def.max, st ? Math.round(v / st) * st : v));
+      };
+      return slider(r, { label, min: 0, max: 1000, get: () => Math.round((Math.log(Number(get()) / def.min) / k) * 1000), set: (x) => set(toV(x), testid), fmt: (x) => fmt(toV(x)), help, testid });
+    }
+    return slider(r, { label, min: def.min, max: def.max, step: def.type === 'integer' ? 1 : (def.step ?? 0.01), get: () => Number(get()), set: (v) => set(v, testid), fmt, help, testid });
+  }
+  if (def.type === 'boolean') return toggle(r, { label, get: () => !!get(), set: (v) => set(v), help, testid });
+  const options = def.options.map((o) => [o.value, o.label.toUpperCase()] as const);
+  const helps = Object.fromEntries(def.options.map((o) => [o.value, o.description]));
+  if (options.length <= 4) return seg(r, { label, options, get: () => String(get()), set: (v) => set(v), help, helps, testid });
+  return select(r, { label, options: () => options, get: () => String(get()), set: (v) => set(v), help, testid });
+}
+
+export function outputChain(d: Dialogs, app: App): void {
+  // every change goes through Core's headless controller (validated), then to the project (undoable)
+  const ctl = () => new OutputChain(OUTPUT_ENGINES, chainOf(audioOf(app.project)));
+  const change = (fn: (c: OutputChain) => unknown, coalesce?: string) => {
+    const c = ctl();
+    fn(c);
+    app.setOutputChain(c.config, coalesce);
+  };
+  const stages = () => chainOf(audioOf(app.project)).stages;
+  const selected = () => stages().find((s) => s.id === chainState.sel) ?? stages()[0];
+  d.show(
+    'OUTPUT CHAIN',
+    'output-chain',
+    (r) => {
+      const cur = selected();
+      const def = cur ? OUTPUT_ENGINES.audio(cur.engine) : undefined;
+      const presets = presetsFor(OUTPUT_ENGINES);
+      const unavailable = app.audio.ctx && !app.audio.chainProcessing;
+      const list = h(
+        'div',
+        { class: 'list fx-list', testid: 'chain-list' },
+        ...stages().map((s, i) => {
+          const e = OUTPUT_ENGINES.audio(s.engine);
+          const lab = h('span', { class: 'd' });
+          const refresh = () => {
+            const now = stages().find((x) => x.id === s.id);
+            lab.textContent = !e ? 'UNAVAILABLE (PASSES AUDIO THROUGH)' : !now?.enabled ? 'OFF' : e.params.map((p) => formatParam(p, now.params[p.id] ?? p.default).toUpperCase()).join(' · ');
+          };
+          r.push(refresh);
+          refresh();
+          return h('div', { class: `li${cur?.id === s.id ? ' sel' : ''}`, testid: `chain-row-${i + 1}`, on: { click: () => ((chainState.sel = s.id), outputChain(d, app)) } }, h('span', { class: 'nm', text: `${i + 1} ${e ? e.name.toUpperCase() : s.engine}` }), lab);
+        }),
+      );
+      return [
+        audioTabs(d, app, 'chain'),
+        h('p', { class: 'hint', text: 'Output engines in series on the master: MASTER processing → 1 → 2 → … → VOLUME → master compressor. The same engines as The Good Bits, The Breakery and emmm (Slop Factory Core). Live playback and EXPORT AUDIO\'s master run the same chain; stems and MIDI are never processed by it. An empty chain changes nothing.' }),
+        unavailable ? h('p', { class: 'hint warn-text', testid: 'chain-unavailable', text: 'This browser cannot run the output chain (AudioWorklet needs https or localhost): audio plays unprocessed.' }) : null,
+        h(
+          'div',
+          { class: 'btnrow' },
+          select(r, {
+            label: 'ADD',
+            options: () => [['', '(ENGINE…)'] as const, ...OUTPUT_ENGINES.list({ kind: 'audio' }).map((e) => [e.id, e.name.toUpperCase()] as const)],
+            get: () => '',
+            set: (id) => {
+              if (!id) return;
+              let added: string | null = null;
+              change((c) => (added = c.add(id)));
+              if (added) chainState.sel = added;
+              outputChain(d, app);
+            },
+            help: 'Add an engine at the end of the chain (up to 8)',
+            testid: 'chain-add',
+          }),
+          select(r, {
+            label: 'PRESET',
+            options: () => [['', '(CUSTOM)'] as const, ...presets.map((p) => [p.key, p.label] as const)],
+            get: () => matchChainPreset(chainOf(audioOf(app.project)), presets) ?? '',
+            set: (k) => {
+              const p = presets.find((x) => x.key === k);
+              if (p) change((c) => c.applyPreset(p));
+              outputChain(d, app);
+            },
+            help: 'Replace the chain with a starting point',
+            testid: 'chain-preset',
+          }),
+          toggle(r, { label: 'BYPASS ALL', get: () => chainOf(audioOf(app.project)).bypass, set: (v) => change((c) => c.setBypass(v)), help: 'Pass audio through the chain unchanged (settings kept)', testid: 'chain-bypass' }),
+        ),
+        stages().length ? list : h('p', { class: 'hint', testid: 'chain-empty', text: 'No engines: ADD one, or pick a PRESET.' }),
+        cur
+          ? h(
+              'div',
+              { class: 'btnrow' },
+              toggle(r, { label: 'ON', get: () => !!selected()?.enabled, set: (v) => change((c) => c.setEnabled(cur.id, v)), help: 'Off: this engine is bypassed (settings kept)', testid: 'chain-on' }),
+              button('▲', () => change((c) => c.move(cur.id, -1)), { help: 'Earlier in the chain', testid: 'chain-up' }),
+              button('▼', () => change((c) => c.move(cur.id, 1)), { help: 'Later in the chain', testid: 'chain-down' }),
+              def
+                ? select(r, {
+                    label: 'ENGINE',
+                    options: () => OUTPUT_ENGINES.list({ kind: 'audio' }).map((e) => [e.id, e.name.toUpperCase()] as const),
+                    get: () => cur.engine,
+                    set: (id) => change((c) => c.replace(cur.id, id)),
+                    help: 'Swap this stage for another engine, in the same place',
+                    testid: 'chain-engine',
+                  })
+                : null,
+              def ? button('DEFAULTS', () => change((c) => c.resetParams(cur.id)), { help: 'Every parameter back to its default', testid: 'chain-defaults' }) : null,
+              button('REMOVE', () => change((c) => c.remove(cur.id)), { help: 'Remove this engine from the chain', testid: 'chain-remove' }),
+            )
+          : null,
+        cur && def ? h('p', { class: 'hint', text: `${def.name.toUpperCase()}: ${def.description}` }) : null,
+        cur && !def ? h('p', { class: 'hint warn-text', text: `"${cur.engine}" was saved by an application with an engine DOWNBEAT does not have. It is kept unchanged and passes audio through; REMOVE drops it.` }) : null,
+        cur && def
+          ? h(
+              'div',
+              { class: 'grid2' },
+              ...def.params.map((p) => paramCtl(r, p, () => selected()?.params[p.id] ?? p.default, (v, coalesce) => change((c) => c.setParam(cur.id, p.id, v), coalesce && `${cur.id}:${coalesce}`), `chain-p-${p.id}`)),
+            )
+          : null,
+      ];
+    },
+    ['audio'],
+    () => JSON.stringify([stages().map((s) => [s.id, s.engine]), selected()?.id, !!app.audio.ctx && !app.audio.chainProcessing]),
   );
 }
 

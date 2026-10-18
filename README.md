@@ -64,6 +64,9 @@ The **AUDIO** button opens three windows:
   and **sample transformations** (Good Bits stretch, varispeed, reverse, drive, crunch).
 - **PROCESSING**: Good Bits output processing per voice and on the master (output stages,
   drive, crunch, tone), before VOLUME and DOWNBEAT's master compressor.
+- **OUTPUT CHAIN**: a chain of Slop Factory Core output engines on the master, after master
+  processing and before VOLUME (the same engines The Good Bits, The Breakery and emmm use): add,
+  reorder, bypass and configure them; live and in the exported master, never in stems or MIDI.
 - **EXPORT AUDIO**: a pattern, the song or a recorded take as WAV (44.1 kHz, 16-bit): the master,
   **stems per sequencer voice**, **stems per drum sound**, or all of them in one ZIP. Every file
   is sample-aligned and the same length.

@@ -29,6 +29,7 @@
  * and is neither trimmed nor normalised. With voice processing CLEAN, the voice stems and the
  * drum-sound stems each sum to the mix before master processing.
  */
+import { chainOf } from './output';
 import { createZip, encodeWav16, fileName, levelStats, slug, uniqueNames, type LevelStats } from '@slopfactory/core/export';
 import { EXPORT_SAMPLE_RATE, renderTimeline, type RenderResult } from '@slopfactory/core/render';
 import type { Timeline } from '@slopfactory/core/events';
@@ -162,6 +163,8 @@ export interface ExportResult {
 
 export interface ExportEnv {
   workletUrl: string | null;
+  /** Core's output-chain AudioWorklet (the OUTPUT CHAIN; null: not run) */
+  chainUrl?: string | null;
   /** VOLUME: part of the master as heard */
   volume: number;
   onProgress?: (fraction: number, stage: string) => void;
@@ -203,6 +206,9 @@ export async function exportAudio(project: Project, library: SampleLibrary, opts
         stems: plan.voiceStems.map((voice) => ({ voice, processed: opts.bake })),
         strips: voiceStrips(snapshot),
         masterFx: audioOf(snapshot).master,
+        // the OUTPUT CHAIN: master only, never the stems
+        masterChain: chainOf(audioOf(snapshot)),
+        chainModuleUrl: env.chainUrl ?? undefined,
         masterGain: env.volume,
         masterInsert: masterCompressor,
         // the compressor looks ahead: the master is advanced by that delay to stay aligned with the stems

@@ -4,7 +4,7 @@ import type { App } from '../app/app';
 import { MidiAccess } from '../midi/webmidi';
 import { DEMOS } from '../persistence/demos';
 import { button, clear, h, seg, select, toggle, type Refreshers } from './dom';
-import { exportAudioDialog, outputFx, sampleBank } from './audioDialogs';
+import { exportAudioDialog, outputChain, outputFx, sampleBank } from './audioDialogs';
 import { noteControl } from './notes';
 import { ROLES, ROLE_INFO, contrastWarnings, exportPalette, importPalette, PaletteError } from './palette';
 
@@ -88,6 +88,10 @@ export class Dialogs {
 
   sampleBank(sound?: string): void {
     sampleBank(this, this.app, sound);
+  }
+
+  outputChain(): void {
+    outputChain(this, this.app);
   }
 
   outputFx(target?: string): void {

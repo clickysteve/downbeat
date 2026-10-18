@@ -23,6 +23,8 @@
 import { cleanFx, identityTransform, repairFx, repairTransform, type OutputFxSettings, type SampleTransform } from '@slopfactory/core/dsp';
 import { defaultZone, repairZone, type SampleZone } from '@slopfactory/core/sampler';
 import type { ChokeSettings } from '@slopfactory/core/audio';
+import { repairChain, type ChainConfig } from '@slopfactory/core/engines';
+import { OUTPUT_ENGINES } from './output';
 import { MAX_SOUND_STEPS, type InternalSound, type Project, type Voice } from '../engine/types';
 
 export type SoundSource = 'internal' | 'sample';
@@ -63,6 +65,11 @@ export interface ProjectAudio {
   voiceFx: Record<string, OutputFxSettings>;
   /** master output processing (before VOLUME and the master compressor) */
   master: OutputFxSettings;
+  /**
+   * The OUTPUT CHAIN (audio/output.ts): Core output engines after the master processing, before
+   * VOLUME. Absent in projects that never used it (an empty chain).
+   */
+  chain?: ChainConfig;
 }
 
 export const defaultChoke = (): SoundChoke => ({ mode: 'auto', group: 1, role: 'both' });
@@ -205,6 +212,8 @@ export function repairAudio(v: unknown, voices: Voice[]): ProjectAudio {
       if (fx[voice.id] !== undefined) a.voiceFx[voice.id] = repairFx(fx[voice.id]);
     }
     a.master = repairFx(v.master);
+    // stages of engines DOWNBEAT does not have are kept (they pass audio through)
+    if (v.chain !== undefined) a.chain = repairChain(v.chain, OUTPUT_ENGINES);
   }
   syncAudioShape(a, voices);
   return a;

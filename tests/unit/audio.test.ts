@@ -359,3 +359,33 @@ describe('the App with samples', () => {
     expect(a.project.audio!.sounds[added.id]).toBeUndefined();
   });
 });
+
+describe('output chain (project audio)', () => {
+  it('projects without a chain keep none (they sound as before); a chain is validated and keeps unknown engines', () => {
+    const pr = smallProject();
+    expect(repairAudio({ master: cleanFx() }, pr.voices).chain).toBeUndefined();
+    expect(defaultAudio(pr).chain).toBeUndefined();
+    const r = repairAudio({ chain: { bypass: true, stages: [{ id: 's1', engine: 'goodbits.drive', enabled: true, params: { amountPct: 500, type: 'laser' } }, { id: 's2', engine: 'other.app-reverb', enabled: true, params: { size: 2 } }] } }, pr.voices);
+    expect(r.chain).toEqual({
+      version: 1,
+      bypass: true,
+      stages: [
+        { id: 's1', engine: 'goodbits.drive', enabled: true, params: { type: 'tape', amountPct: 100 }, v: 1 },
+        { id: 's2', engine: 'other.app-reverb', enabled: true, params: { size: 2 } },
+      ],
+    });
+  });
+
+  it('round-trips through the project file', () => {
+    const pr = smallProject();
+    const a = ensureAudio(pr);
+    a.chain = { version: 1, bypass: false, stages: [{ id: 's1', engine: 'goodbits.crunch', enabled: true, params: { bits: 6, rateDivide: 3 }, v: 1 }] };
+    expect(parseProject(serialize(pr)).project.audio!.chain).toEqual(a.chain);
+  });
+
+  it('offers every built-in audio engine and no MIDI engine', async () => {
+    const { OUTPUT_ENGINES } = await import('../../src/audio/output');
+    expect(OUTPUT_ENGINES.list().map((e) => e.id)).toEqual(['goodbits.output-stage', 'goodbits.drive', 'goodbits.crunch', 'core.tone']);
+    expect(OUTPUT_ENGINES.list({ kind: 'midi' })).toEqual([]);
+  });
+});
