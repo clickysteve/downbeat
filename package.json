@@ -29,6 +29,6 @@
   },
   "dependencies": {
     "@fontsource/silkscreen": "^5.3.0",
-    "@slopfactory/core": "github:clickysteve/slopfactory-core#3cda1c2694d124747efc81343e46a752bea82be8"
+    "@slopfactory/core": "github:clickysteve/slopfactory-core#07f14f050569964082c8c9b390c9221f4373b6c3"
   }
 }
