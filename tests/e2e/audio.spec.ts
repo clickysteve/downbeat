@@ -19,6 +19,7 @@ async function boot(page: Page, opts: { clear?: boolean } = {}) {
       if (!sessionStorage.getItem('downbeat.test.booted')) {
         localStorage.clear();
         indexedDB.deleteDatabase('downbeat-samples');
+        indexedDB.deleteDatabase('downbeat-kit-library');
         sessionStorage.setItem('downbeat.test.booted', '1');
       }
     });

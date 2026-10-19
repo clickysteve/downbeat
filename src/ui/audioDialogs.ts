@@ -19,12 +19,13 @@ import { button, h, seg, select, slider, stepper, toggle } from './dom';
 const SAMPLE_ACCEPT = '.wav,.wave,.aif,.aiff,.aifc,.mp3,.ogg,.flac,.m4a,audio/*';
 
 /** The row that switches between the audio windows. */
-function audioTabs(d: Dialogs, app: App, current: 'bank' | 'fx' | 'chain' | 'export'): HTMLElement {
-  const tab = (id: 'bank' | 'fx' | 'chain' | 'export', label: string, open: () => void, help: string) => h('button', { type: 'button', class: id === current ? 'on' : '', text: label, help, testid: `audio-tab-${id}`, 'aria-pressed': String(id === current), on: { click: () => id !== current && open() } });
+export function audioTabs(d: Dialogs, app: App, current: 'bank' | 'kits' | 'fx' | 'chain' | 'export'): HTMLElement {
+  const tab = (id: 'bank' | 'kits' | 'fx' | 'chain' | 'export', label: string, open: () => void, help: string) => h('button', { type: 'button', class: id === current ? 'on' : '', text: label, help, testid: `audio-tab-${id}`, 'aria-pressed': String(id === current), on: { click: () => id !== current && open() } });
   return h(
     'div',
     { class: 'seg audio-tabs', role: 'group' },
     tab('bank', 'SAMPLE BANK', () => sampleBank(d, app), 'Samples for the drum sounds, choke groups, sample transformations'),
+    tab('kits', 'KITS', () => d.kits(), 'Saved kits, kit files and the sample library'),
     tab('fx', 'PROCESSING', () => outputFx(d, app), 'Output processing per voice and on the master'),
     tab('chain', 'OUTPUT CHAIN', () => outputChain(d, app), 'A chain of output engines on the master, before VOLUME'),
     tab('export', 'EXPORT AUDIO', () => exportAudioDialog(d, app), 'Render WAV: master, voice stems, drum-sound stems'),

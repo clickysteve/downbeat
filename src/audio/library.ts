@@ -38,6 +38,8 @@ export interface LibraryDeps {
   /** AudioBuffer factory (tests replace it) */
   makeBuffer?: (audio: AudioData) => AudioBuffer;
   decode?: (bytes: ArrayBuffer, name: string) => Promise<DecodedSample>;
+  /** decoded audio of a stored sample (the kit library's cache); default: read the store and decode */
+  source?: (id: string, name: string) => Promise<DecodedSample>;
 }
 
 export interface LoadedSample {
@@ -85,6 +87,7 @@ export class SampleLibrary {
     let p = this.decoded.get(id);
     if (!p) {
       p = (async () => {
+        if (this.deps.source && (await this.deps.store?.has(id))) return this.deps.source(id, name);
         const s = await this.deps.store?.get(id);
         if (!s) throw new SampleError('empty', 'missing');
         return this.decodeFn(s.bytes, s.name || name);

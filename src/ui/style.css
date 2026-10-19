@@ -1631,3 +1631,44 @@ input[type='range']:disabled {
     margin-left: -1px;
   }
 }
+
+/* KITS (AUDIO → KITS) */
+.kit-row:focus-visible {
+  outline: 1px dotted var(--ink);
+  outline-offset: -3px;
+}
+
+.kit-row.sel:focus-visible {
+  outline-color: var(--paper);
+}
+
+.kit-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 2px solid var(--warn);
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.kit-confirm .nm {
+  flex: 1;
+}
+
+.kit-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 8px;
+  border-left: 3px solid var(--ink);
+}
+
+.kit-map .li {
+  font-size: 11px;
+  padding: 2px 6px;
+}
+
+.library-list,
+.assign-list {
+  max-height: 160px;
+}
