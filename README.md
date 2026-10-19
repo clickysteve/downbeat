@@ -56,7 +56,7 @@ new pattern.
 
 ## Samples, processing and audio export
 
-The **AUDIO** button opens three windows:
+The **AUDIO** button opens these windows (as tabs of one):
 
 - **SAMPLE BANK**: every drum sound (each sound step of each voice) plays its voice's internal
   sound or a **sample** you load or drop in: volume, pan, tuning, one-shot / gated / loop,
@@ -70,9 +70,14 @@ The **AUDIO** button opens three windows:
 - **EXPORT AUDIO**: a pattern, the song or a recorded take as WAV (44.1 kHz, 16-bit): the master,
   **stems per sequencer voice**, **stems per drum sound**, or all of them in one ZIP. Every file
   is sample-aligned and the same length.
+- **KITS** (also the KITS button): save, load, duplicate, rename and delete kits (the drum sounds'
+  samples and their settings; loading one never touches patterns, voices, the mixer or MIDI, and
+  UNDO reverts it), a sample library to preview and assign samples without loading files again,
+  and kit files (`.kit.zip`, with the audio) that move kits between browsers and to and from
+  **The Breakery**. See [docs/KITS.md](docs/KITS.md).
 
 Samples stay in the browser (IndexedDB); **FILE → DOWNLOAD BUNDLE** carries a project with its
-samples to another browser. Old projects open unchanged and sound as before. All of this is
+samples to another browser. Old projects open unchanged and sound as before. All of this, kits included, is
 **[Slop Factory Core](https://github.com/clickysteve/slopfactory-core)**, the audio package
 DOWNBEAT shares with ANVIL. Details: [docs/AUDIO.md](docs/AUDIO.md).
 
@@ -101,6 +106,7 @@ Then open the address Vite prints. Other scripts:
 | `npm test` | unit tests (Vitest): engine, MIDI and transport, persistence, palettes, audio settings, event adapter, export planning |
 | `npm run typecheck` | TypeScript |
 | `npm run build` | production build in `dist/` (relative paths: works at any address) |
+| `npm run test:cross` | the cross-application kit test (needs a built checkout of The Breakery: `BREAKERY_DIR=../the-breakery`) |
 | `npm run test:e2e` | browser tests (Playwright) against the built site, using the installed Google Chrome locally (or `DOWNBEAT_CHROMIUM=/path/to/chromium`): the instrument, the audio windows with real WAV/ZIP downloads, and measured audio verification |
 
 Web MIDI needs Chrome, Edge, Opera or Firefox. Internal sounds work in any
@@ -112,7 +118,7 @@ tested in Chromium.
 - [Quick Start](docs/QUICK_START.md)
 - [Historical research](docs/HISTORICAL_RESEARCH.md), [Classic spec](docs/CLASSIC_SPEC.md), [Uncertainties](docs/UNCERTAINTIES.md), [Sources](docs/SOURCES.md)
 - [Extended spec](docs/EXTENDED_SPEC.md)
-- [Samples, processing and audio export](docs/AUDIO.md), [Audio verification](docs/AUDIO-VERIFICATION.md)
+- [Samples, processing and audio export](docs/AUDIO.md), [Kits](docs/KITS.md), [Audio verification](docs/AUDIO-VERIFICATION.md)
 - [Architecture](docs/ARCHITECTURE.md), [Design](docs/DESIGN.md), [MIDI and sync](docs/MIDI.md)
 
 ## How historical is CLASSIC?

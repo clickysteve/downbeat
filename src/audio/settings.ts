@@ -184,7 +184,7 @@ type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v);
 const oneOf = <T extends string>(v: unknown, xs: readonly T[], d: T): T => (xs.includes(v as T) ? (v as T) : d);
 
-function repairSlot(v: unknown): SoundSlot {
+export function repairSlot(v: unknown): SoundSlot {
   const d = defaultSlot();
   if (!isObj(v)) return d;
   const sampleId = typeof v.sampleId === 'string' && /^[0-9a-f]{64}$/.test(v.sampleId) ? v.sampleId : null;

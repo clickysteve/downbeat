@@ -8,7 +8,10 @@ import { RenderCancelled } from '@slopfactory/core/render';
 import type { ChainConfig } from '@slopfactory/core/engines';
 import type { DecodedSample, SampleZone } from '@slopfactory/core/sampler';
 import { IndexedDbSampleStore, type SampleStore } from '@slopfactory/core/storage';
+import { Auditioner, IndexedDbKitStore, installBundledKits, KitLibrary, KitSession, MemoryKitStore, migrateOnce, type KitStore } from '@slopfactory/core/kits';
 import { makeBundle, unpackBundle } from '../audio/bundle';
+import { BUNDLED_KITS } from '../audio/bundledKits';
+import { APP_ID, DownbeatKitHost, KIT_LIBRARY_DB, type OtherSounds } from '../audio/kits';
 import { exportAudio, type AudioExportOptions, type ExportResult } from '../audio/export';
 import { SampleLibrary } from '../audio/library';
 import { LiveAudio } from '../audio/live';
@@ -49,6 +52,7 @@ export type Topic =
   | 'audio'
   | 'feed'
   | 'palette'
+  | 'kits'
   | 'perf'
   | 'mode';
 
@@ -66,6 +70,8 @@ export interface AppDeps {
   kv?: KV | null;
   /** Sample storage (default: IndexedDB in the browser; null: none) */
   sampleStore?: SampleStore | null;
+  /** Kit library storage: kits and the sample index (default: IndexedDB in the browser) */
+  kitStore?: KitStore | null;
   /** Sample decoding, AudioBuffers and transformations (tests replace them) */
   decode?: (bytes: ArrayBuffer, name: string) => Promise<DecodedSample>;
   makeBuffer?: (audio: AudioData) => AudioBuffer;
@@ -89,6 +95,16 @@ export class App {
   readonly audio: LiveAudio;
   /** Samples of the drum sounds, shared by live audio and audio export. */
   readonly library: SampleLibrary;
+  /** Slop Factory Core's kit library: every sample kept in this browser, and the saved kits. */
+  readonly kitLibrary: KitLibrary;
+  /** The current kit (KITS): Core's kit workflow on DOWNBEAT's drum sounds. */
+  readonly kits: KitSession;
+  /** Resolves when the kit library has started (migration, bundled kits, the current kit). */
+  readonly kitsReady: Promise<void>;
+  /** LOAD KIT: drum sounds the kit does not cover keep their sounds, or go back to INTERNAL. */
+  otherSounds: OtherSounds = 'keep';
+  /** Previews of library samples (on the live AudioContext, outside the sequencer). */
+  readonly audition: Auditioner;
   /** An audio export in progress. */
   exporting: AbortController | null = null;
   readonly midi: MidiAccess;
@@ -140,7 +156,12 @@ export class App {
     this.sched = new Scheduler(this.engine, this.out, this.now, deps.ticker ?? new WorkerTicker());
     const store = deps.sampleStore !== undefined ? deps.sampleStore : typeof indexedDB !== 'undefined' ? new IndexedDbSampleStore('downbeat-samples') : null;
     const runner = deps.transformRunner ?? (typeof Worker !== 'undefined' ? new WorkerTransformRunner(() => new Worker(TRANSFORM_WORKER_URL, { type: 'module' })) : undefined);
-    this.library = new SampleLibrary({ store, runner, decode: deps.decode, makeBuffer: deps.makeBuffer });
+    // kits and the sample index in their own database; audio stays in `downbeat-samples`
+    const kitStore = deps.kitStore !== undefined ? deps.kitStore : typeof indexedDB !== 'undefined' ? new IndexedDbKitStore(KIT_LIBRARY_DB) : store ? new MemoryKitStore() : null;
+    this.kitLibrary = new KitLibrary({ app: APP_ID, audio: store, store: kitStore, decode: deps.decode, inUse: () => this.samplesInUse() });
+    this.library = new SampleLibrary({ store, runner, decode: deps.decode, makeBuffer: deps.makeBuffer, source: (id, name) => this.kitLibrary.decoded(id, name) });
+    this.kits = new KitSession(this.kitLibrary, new DownbeatKitHost(this), { untitled: 'UNTITLED KIT' });
+    this.kits.onChange(() => this.emit(['kits']));
     this.library.onChange = () => this.emit(['audio']);
     this.workletUrl = deps.workletUrl !== undefined ? deps.workletUrl : OUTPUT_FX_WORKLET_URL;
     this.chainWorkletUrl = deps.chainWorkletUrl !== undefined ? deps.chainWorkletUrl : CHAIN_WORKLET_URL;
@@ -195,6 +216,8 @@ export class App {
       }
     });
     this.out.onClear(() => this.audio.cancel());
+    this.audition = new Auditioner({ context: async () => ((await this.audio.ensure()) ? this.audio.ctx : null) });
+    this.kitsReady = this.startKits();
     if (restored?.report.length) this.setStatus(`Restored your last session. ${restored.report.join(' ')}`);
     else if (restored) this.setStatus('Restored your last session.');
     else this.setStatus('Welcome to DOWNBEAT. Press PLAY (space bar), then change DENSITY or FILL on a voice.');
@@ -1425,17 +1448,20 @@ export class App {
     this.setSound(key, (s) => (s.choke = { ...s.choke, ...patch }));
   }
 
-  /** Decode, store and assign a sample file to a drum sound (which then plays SAMPLE). */
+  /** Decode, store and assign a sample file to a drum sound (which then plays SAMPLE). It joins the kit library. */
   async loadSample(key: string, file: { bytes: ArrayBuffer; name: string; type?: string }): Promise<boolean> {
     if (!this.sound(key)) return false;
     try {
-      const r = await this.library.importFile(file.bytes, file.name, file.type ?? '');
+      const r = await this.kitLibrary.addSample(file.bytes, file.name, file.type ?? '');
+      if (!r.stored) throw new Error('Browser storage is unavailable, so the sample cannot be kept.');
       this.setSound(key, (s) => {
-        s.sampleId = r.id;
+        s.sampleId = r.sample.id;
         s.name = file.name;
         s.source = 'sample';
       });
-      this.setStatus(`Loaded "${file.name}".${r.warnings.length ? ' ' + r.warnings.join(' ') : ''}`, r.warnings.length ? 'warn' : 'info');
+      const warnings = r.decoded.warnings;
+      this.setStatus(`Loaded "${file.name}".${warnings.length ? ' ' + warnings.join(' ') : ''}`, warnings.length ? 'warn' : 'info');
+      this.emit(['kits']);
       return true;
     } catch (e) {
       this.setStatus(e instanceof Error ? e.message : String(e), 'warn');
@@ -1575,14 +1601,21 @@ export class App {
     }
   }
 
-  /** Delete stored samples that neither this project, the autosave nor any saved project uses. */
-  async purgeSamples(): Promise<number> {
-    const store = this.library.store;
-    if (!store) return 0;
+  /** Samples this project, the autosave or a saved project uses (never deleted from the kit library). */
+  samplesInUse(): Set<string> {
     const keep = new Set(referencedSamples(this.project.audio));
     const autosave = this.store.loadAutosave();
     for (const id of referencedSamples(autosave?.project.audio)) keep.add(id);
     for (const e of this.store.library()) for (const id of referencedSamples(this.store.loadFromLibrary(e.name)?.project.audio)) keep.add(id);
+    return keep;
+  }
+
+  /** Delete stored samples that neither this project, the autosave, any saved project nor any saved kit uses. */
+  async purgeSamples(): Promise<number> {
+    const store = this.library.store;
+    if (!store) return 0;
+    const keep = this.samplesInUse();
+    for (const k of await this.kitLibrary.listKits()) for (const i of (await this.kitLibrary.getKit(k.id))?.instruments ?? []) for (const r of i.samples) keep.add(r.sample);
     let n = 0;
     for (const m of await store.list()) {
       if (keep.has(m.id)) continue;
@@ -1590,9 +1623,96 @@ export class App {
       this.library.forget(m.id);
       n++;
     }
+    // and their entries in the kit library's index
+    if (this.kitLibrary.persistent) await this.kitLibrary.removeUnused().catch(() => 0);
     this.setStatus(n ? `Deleted ${n} unused sample${n > 1 ? 's' : ''} from this browser.` : 'No unused samples.');
-    this.emit(['audio']);
+    this.emit(['audio', 'kits']);
     return n;
+  }
+
+  // ------------------------------------------------------------------ kits
+
+  /**
+   * Start the kit library: index the samples existing projects use (their audio is already
+   * stored; nothing is copied or changed), install bundled kits, and take the kit last used as
+   * the current one. The project's own sounds are never replaced at startup.
+   */
+  private async startKits(): Promise<void> {
+    try {
+      const r = await migrateOnce(this.kitLibrary, 'downbeat-samples-v1', async (m) => {
+        const names = new Map<string, string>();
+        const projects = [this.project, this.store.loadAutosave()?.project, ...this.store.library().map((e) => this.store.loadFromLibrary(e.name)?.project)];
+        for (const p of projects) for (const slots of Object.values(p?.audio?.sounds ?? {})) for (const sl of slots) if (sl.sampleId && !names.has(sl.sampleId)) names.set(sl.sampleId, sl.name);
+        for (const [id, name] of names) await m.step(id, async () => void (await this.kitLibrary.indexSample(id, { name: name || 'sample' })));
+      });
+      await installBundledKits(this.kitLibrary, BUNDLED_KITS);
+      await this.kits.resume();
+      if (r.error) this.setStatus(`The kit library could not index existing samples yet (it will try again): ${r.error}`, 'warn');
+    } catch (e) {
+      this.setStatus(`The kit library is unavailable: ${e instanceof Error ? e.message : String(e)}`, 'warn');
+    }
+  }
+
+  /**
+   * Apply a kit's drum sound settings: every sample decodes first (a missing or broken one
+   * changes nothing), then one undoable edit. Voices, patterns, mixer and MIDI are untouched.
+   */
+  async applyKitSounds(sounds: Map<string, SoundSlot>, label: string): Promise<void> {
+    for (const s of sounds.values()) if (s.sampleId) await this.kitLibrary.decoded(s.sampleId, s.name);
+    this.edit(
+      () => {
+        const a = ensureAudio(this.project);
+        for (const [key, slot] of sounds) {
+          const k = parseSoundKey(key);
+          if (k && a.sounds[k.voice]?.[k.step]) a.sounds[k.voice]![k.step] = slot;
+        }
+      },
+      ['audio'],
+    );
+    this.audioChanged();
+    this.setStatus(`Kit: ${label} (${sounds.size} drum sound${sounds.size === 1 ? '' : 's'} changed; patterns, voices, mixer and MIDI unchanged). UNDO reverts it.`);
+  }
+
+  /** Assign a sample already in the library to a drum sound (no second import). */
+  async assignLibrarySample(key: string, sampleId: string): Promise<boolean> {
+    if (!this.sound(key)) return false;
+    const info = await this.kitLibrary.getSample(sampleId);
+    if (!info) return false;
+    try {
+      await this.kitLibrary.decoded(sampleId, info.name);
+    } catch (e) {
+      this.setStatus(e instanceof Error ? e.message : String(e), 'warn');
+      return false;
+    }
+    this.setSound(key, (s) => {
+      s.sampleId = sampleId;
+      s.name = info.name.slice(0, 120);
+      s.source = 'sample';
+    });
+    this.setStatus(`Assigned "${info.name}".`);
+    return true;
+  }
+
+  /** Import sample files into the kit library (without assigning them). */
+  async importSamples(files: { name: string; type?: string; arrayBuffer(): Promise<ArrayBuffer> }[]): Promise<number> {
+    const r = await this.kitLibrary.importFiles(files, (done, total) => total > 3 && this.setStatus(`Importing samples… ${done} / ${total}`));
+    const parts = [`Imported ${r.added.length} sample${r.added.length === 1 ? '' : 's'}.`];
+    if (r.duplicates.length) parts.push(`${r.duplicates.length} already in the library.`);
+    if (r.errors.length) parts.push(`Not imported: ${r.errors.map((e) => `${e.name} (${e.message})`).join('; ')}`);
+    if (r.added.some((a) => !a.stored)) parts.push('Browser storage is unavailable: they last until the page is closed.');
+    this.setStatus(parts.join(' '), r.errors.length ? 'warn' : 'info');
+    this.emit(['kits']);
+    return r.added.length;
+  }
+
+  /** Hear a library sample now, on its own (never through the sequencer or a voice). */
+  async previewSample(sampleId: string): Promise<void> {
+    const info = await this.kitLibrary.getSample(sampleId);
+    try {
+      if (!(await this.audition.playSample(this.kitLibrary, sampleId, { name: info?.name }))) this.setStatus('Audio is not available in this browser.', 'warn');
+    } catch (e) {
+      this.setStatus(e instanceof Error ? e.message : String(e), 'warn');
+    }
   }
 
   // ------------------------------------------------------------------ palette

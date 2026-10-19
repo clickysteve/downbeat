@@ -20,7 +20,9 @@ audio package DOWNBEAT shares with ANVIL. Source layout:
 | `src/audio/settings.ts` | Audio settings (format 2): drum sounds, choke groups, processing; repair |
 | `src/audio/timeline.ts` | **Adapter**: the engine's notes to Core timelines, by sequencer voice or by drum sound |
 | `src/audio/routing.ts` | Which instrument plays a drum sound, choke groups, voice strips, the master compressor |
-| `src/audio/library.ts`, `live.ts`, `export.ts`, `bundle.ts` | Samples (Core storage and sampler), live audio, EXPORT AUDIO, portable bundles |
+| `src/audio/library.ts`, `live.ts`, `export.ts`, `bundle.ts` | Samples (Core storage and sampler, decoded audio from Core's kit library), live audio, EXPORT AUDIO, portable bundles |
+| `src/audio/kits.ts`, `bundledKits.ts` | **Adapter** to Core's kit system: drum sounds as kit roles and targets, the project's drum sounds as kit instruments and back (`DownbeatKitHost`); kits shipped with DOWNBEAT (none yet). See [KITS.md](KITS.md) |
+| `src/ui/kitsDialog.ts` | The KITS window (a view of Core's `KitSession` and `KitLibrary`) |
 | `src/persistence/` | Project format, migration and repair; browser storage; demos |
 | `src/app/app.ts` | Application state and every action; wiring of engine, scheduler, MIDI, sound |
 | `src/ui/` | Views (grid, tools, panels, monitor, top bar, side, dialogs, audio windows), palette, styles |

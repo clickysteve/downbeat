@@ -60,6 +60,15 @@ A choke group lets one sound cut another that is still ringing.
 Notes that start at the same moment never cut each other. Choke groups behave identically live
 and in exports.
 
+## KITS (AUDIO → KITS, or the KITS button)
+
+Kits save and exchange the SAMPLE BANK's samples and their settings: SAVE, LOAD (one undoable
+step that changes nothing but the drum sounds' samples), DUPLICATE, RENAME, DELETE, and kit files
+(`.kit.zip`, with the audio) that move kits between browsers and to and from The Breakery. The
+window also holds the sample library: every sample in this browser, to preview and assign to any
+drum sound without loading the file again. It is Slop Factory Core's kit system. See
+[KITS.md](KITS.md).
+
 ## PROCESSING (AUDIO → PROCESSING)
 
 Good Bits output processing (Core's output engine) on each **sequencer voice** and on the
@@ -167,8 +176,10 @@ second of silence first and discard it.
   uses, hash-checked when opened (FILE → OPEN). A plain project file opened in another browser
   shows its samples as MISSING; those sounds play their internal sounds until the samples are
   loaded again or the bundle is opened.
-- **PURGE UNUSED SAMPLES** deletes stored samples that neither the open project, the autosave
-  nor any project in the browser library uses.
+- **PURGE UNUSED SAMPLES** deletes stored samples that neither the open project, the autosave,
+  any project in the browser library nor any saved kit uses.
+- **Kits** (`downbeat-kit-library`) keep sets of drum-sound samples; kit files (`.kit.zip`) carry
+  them with their audio. See [KITS.md](KITS.md).
 - Undo and redo include every audio setting.
 
 ## MIDI

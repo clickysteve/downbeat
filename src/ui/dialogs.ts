@@ -1,10 +1,11 @@
 /** In-app dialogs (never browser alert / confirm). */
-const wide = new Set(['sample-bank', 'export-audio', 'output-fx']);
+const wide = new Set(['sample-bank', 'kits-dialog', 'export-audio', 'output-fx']);
 import type { App } from '../app/app';
 import { MidiAccess } from '../midi/webmidi';
 import { DEMOS } from '../persistence/demos';
 import { button, clear, h, seg, select, toggle, type Refreshers } from './dom';
 import { exportAudioDialog, outputChain, outputFx, sampleBank } from './audioDialogs';
+import { kitsWindow } from './kitsDialog';
 import { noteControl } from './notes';
 import { ROLES, ROLE_INFO, contrastWarnings, exportPalette, importPalette, PaletteError } from './palette';
 
@@ -92,6 +93,10 @@ export class Dialogs {
 
   outputChain(): void {
     outputChain(this, this.app);
+  }
+
+  kits(): void {
+    kitsWindow(this, this.app);
   }
 
   outputFx(target?: string): void {
